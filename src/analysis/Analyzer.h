@@ -125,6 +125,8 @@ private:
     double nnLagSec_ = 0;
     float nnW_ = -1.f;                 // blend: 1 = network only, 0 = hand-built ODF only (-1 = unset)
     float nnScale_ = 1.f;
+    float eventThresh_ = 0.4f, eventGain_ = 0.f; // peak-based phase correction (gain 0 = off)
+    float actPrev_ = 0, actPrev2_ = 0;
     float nnAt(const std::vector<float>& ring, double t) const;
 
     MusicState state_;

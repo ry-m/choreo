@@ -10,11 +10,15 @@
 //   --match TEXT  only tracks whose title contains TEXT (comma-separated list allowed)
 //   --record DIR  also save each captured track as DIR/<title>.wav (local test cache only —
 //                 never commit these)
+//   --full        record each track for its whole length (from Spotify), up to 10 minutes
+//   --skip-existing  skip tracks already recorded in --record DIR (resume an interrupted run)
+// Fail-safe: Spotify is paused on any error, on Ctrl-C/kill, and at the end.
 // CSV columns: uri,title,artist,bpm,bpm_source   (# lines are comments)
 #include "analysis/Analyzer.h"
 #include "audio/Capture.h"
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
@@ -85,6 +89,9 @@ bool matches(const std::string& title, const std::string& list) {
     return false;
 }
 
+volatile std::sig_atomic_t gStop = 0;
+void onSignal(int) { gStop = 1; }
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -96,6 +103,12 @@ int main(int argc, char** argv) {
     bool audible = false;
     int only = -1;
     std::string outPath, match, recordDir;
+    bool full = false, skipExisting = false;
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+    std::signal(SIGHUP, onSignal);
+    // Never leave Spotify playing out loud if we stop for any reason.
+    std::atexit([] { std::system("osascript -e 'tell application \"Spotify\" to pause' >/dev/null 2>&1"); });
     for (int i = 2; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--out") && i + 1 < argc) outPath = argv[++i];
@@ -103,6 +116,8 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--only") && i + 1 < argc) only = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--match") && i + 1 < argc) match = argv[++i];
         else if (!std::strcmp(argv[i], "--record") && i + 1 < argc) recordDir = argv[++i];
+        else if (!std::strcmp(argv[i], "--full")) full = true;
+        else if (!std::strcmp(argv[i], "--skip-existing")) skipExisting = true;
     }
 
     std::vector<Track> tracks;
@@ -128,6 +143,13 @@ int main(int argc, char** argv) {
         if (only >= 0 && int(ti) != only) continue;
         const Track& t = tracks[ti];
         if (!matches(t.title, match)) continue;
+        if (gStop) break;
+        std::string safeName = t.title;
+        for (char& c : safeName) if (c == '/' || c == ':') c = '_';
+        if (skipExisting && !recordDir.empty()) {
+            std::FILE* ex = std::fopen((recordDir + "/" + safeName + ".wav").c_str(), "rb");
+            if (ex) { std::fclose(ex); continue; }
+        }
         osascript("tell application \"Spotify\" to play track \"" + t.uri + "\"");
         // Wait (up to 8 s) until Spotify has actually switched to this track and is playing.
         std::string playing;
@@ -144,7 +166,12 @@ int main(int argc, char** argv) {
 
         // A fresh tap per track (Spotify may start new audio helper processes), but one analyser.
         auto cap = createAppCapture("com.spotify.client", !audible);
-        if (!cap || !cap->start(&ring)) { std::fprintf(stderr, "could not tap Spotify audio\n"); return 1; }
+        if (!cap || !cap->start(&ring)) { std::fprintf(stderr, "could not tap Spotify audio — stopping (Spotify paused)\n"); return 1; }
+        double trackSeconds = seconds;
+        if (full) {
+            double ms = std::atof(osascript("tell application \"Spotify\" to duration of current track").c_str());
+            trackSeconds = std::clamp(ms / 1000.0 - 1.0, 20.0, 600.0);
+        }
         if (!analyzer) analyzer = std::make_unique<Analyzer>(cap->sampleRate());
 
         const double t0 = analyzer->state().time;
@@ -152,7 +179,7 @@ int main(int argc, char** argv) {
         double lockSec = -1, lastBpm = 0, nextSample = t0;
         auto wallStart = std::chrono::steady_clock::now();
         std::vector<float> recording;
-        while (analyzer->state().time - t0 < seconds) {
+        while (analyzer->state().time - t0 < trackSeconds && !gStop) {
             size_t n = ring.read(buf.data(), buf.size());
             if (n) {
                 analyzer->process(buf.data(), n);
@@ -172,14 +199,13 @@ int main(int argc, char** argv) {
                 lastBpm = s.bpm;
             }
             // Guard against stalls (e.g. playback stopped): 3x real time budget.
-            if (std::chrono::steady_clock::now() - wallStart > std::chrono::duration<double>(seconds * 3 + 10)) break;
+            if (std::chrono::steady_clock::now() - wallStart > std::chrono::duration<double>(trackSeconds * 1.5 + 10)) {
+                std::fprintf(stderr, "%s: playback stalled, moving on\n", t.title.c_str());
+                break;
+            }
         }
         cap->stop();
-        if (!recordDir.empty()) {
-            std::string name = t.title;
-            for (char& c : name) if (c == '/' || c == ':') c = '_';
-            writeWav(recordDir + "/" + name + ".wav", recording, cap->sampleRate());
-        }
+        if (!recordDir.empty() && !gStop) writeWav(recordDir + "/" + safeName + ".wav", recording, cap->sampleRate());
 
         double presentPct = samples ? 100.0 * present / samples : 0;
         double correctPct = present ? 100.0 * exact / present : 0;

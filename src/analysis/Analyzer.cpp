@@ -44,6 +44,7 @@ Analyzer::Analyzer(double sampleRate)
     if (const char* e = std::getenv("CHOREO_HW"))
         std::sscanf(e, "%f,%f,%f,%f", &harmonicW_[0], &harmonicW_[1], &harmonicW_[2], &harmonicW_[3]);
     if (const char* e = std::getenv("CHOREO_PRIOR")) std::sscanf(e, "%f,%f", &priorCenter_, &priorOctaves_);
+    if (const char* e = std::getenv("CHOREO_EVENT")) std::sscanf(e, "%f,%f", &eventThresh_, &eventGain_);
     if (const char* e = std::getenv("CHOREO_NNW")) nnW_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_NNSCALE")) nnScale_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_CS")) std::sscanf(e, "%f,%f,%d", &csAlpha_, &csEta_, &csBeats_);
@@ -215,6 +216,20 @@ void Analyzer::analyzeHop() {
         phaseOdfValue = nnW_ * act * nnScale_ + (1 - nnW_) * phaseOdfValue;
         state_.downbeatActivation = nnAt(nnDown_, tHop - nnLagSec_);
         state_.beatActivation = act;
+        // Peak-based phase correction: a clear activation peak near a predicted beat pulls the
+        // phase straight onto it (the network's peaks are sharp and accurately timed).
+        if (eventGain_ > 0) {
+            bool peak = actPrev_ > eventThresh_ && actPrev_ >= act && actPrev_ > actPrev2_;
+            if (peak && state_.beatPresent) {
+                // The peak was one hop ago, nnLag seconds before that hop's time.
+                double agoHops = 1.0 + nnLagSec_ * fps_;
+                double phaseAtPeak = phase_ - agoHops / periodHops_;
+                float err = wrapHalf(phaseAtPeak);
+                if (std::fabs(err) < 0.2f) phase_ -= eventGain_ * err * actPrev_;
+            }
+            actPrev2_ = actPrev_;
+            actPrev_ = act;
+        }
     }
     odf_[odfPos_] = odf;
     // Phase alignment uses its own mix: beats should sit on kicks and snares, not on off-beat

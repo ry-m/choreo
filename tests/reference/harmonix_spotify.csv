@@ -1,0 +1,161 @@
+# Harmonix Set songs whose Spotify version matches the annotated length (same edit).
+# 'title' is the Harmonix file id (unique, used as the recording filename).
+uri,title,artist,bpm,bpm_source
+spotify:track:5jU0LKxVmJB7vyFAEDqp9N,0352_boogiewonderland,Earth  Wind & Fire,130,harmonix annotations; Boogie Wonderland; Funk/Disco; 287s
+spotify:track:0SEfZFfgr5awTIr1T2C4n5,0404_holditagainstme,Britney Spears,133,harmonix annotations; Hold It Against Me; Dance/Electronic; 227s
+spotify:track:4f3uZW3Wc1uO2cN4WJs5nu,0408_icanonlyimagine,David Guetta feat. Chris Brown & Lil Wayne,128,harmonix annotations; I Can Only Imagine; Dance/Electronic; 209s
+spotify:track:46IUHF2lCZPDkZsLhhR974,0376_earthquake,Labrinth feat. Busta Rhymes,77,harmonix annotations; Earthquake; Dance/Electronic; 260s
+spotify:track:1Vixb2G70s0J2Irf6hi8VE,0473_payphone,Maroon 5,110,harmonix annotations; Payphone; Pop; 222s
+spotify:track:5PdIRqHXVgE4xd6HqwnLjT,0495_someonelikeyou,Adele,67,harmonix annotations; Someone Like You; Pop; 282s
+spotify:track:5gRKIU9Ss4V26j6h2s1l6v,0411_ifihadyou,Adam Lambert,131,harmonix annotations; If I Had You; Pop; 225s
+spotify:track:5EdEMdALg2z7KfcWOUE85n,0441_lovingyoutonight,Andrew Allen,93,harmonix annotations; Loving You Tonight; Pop; 180s
+spotify:track:70jb2bIurVzYfxhhsRd4ew,0453_mygirl,Mindless Behavior,74,harmonix annotations; My Girl; Hip-Hop; 240s
+spotify:track:63CHa6rmamv9OsehkRD8oz,0331_againstallodds,Phil Collins,58,harmonix annotations; Against All Odds (Take a Look at Me Now); Pop; 206s
+spotify:track:3GoAxXQ1JATxMJAtIT7hnX,0479_pricetag,Jessie J,87,harmonix annotations; Price Tag (clean edit); Pop; 198s
+spotify:track:0EbDc5I48i9ReuhQXtaiOu,0440_loveyoulikealovesong,Selena Gomez & The Scene,118,harmonix annotations; Love You Like a Love Song; Pop; 186s
+spotify:track:1qk9ujVgudgU8CyhKOx8ji,0494_somebodythatiusedtoknow,Gotye feat. Kimbra,130,harmonix annotations; Somebody That I Used to Know; Pop; 244s
+spotify:track:6bKzJzJJ0BCdu5vH1IYrLx,0464_oneofus,Joan Osborne,87,harmonix annotations; One of Us; Pop; 257s
+spotify:track:2ya7QgShrnI12YnREgBwav,0379_et,Katy Perry feat. Kanye West,75,harmonix annotations; E.T.; Hip-Hop; 229s
+spotify:track:0V5AT5uxkr3dQybGSxxe8l,0432_letsgo,Calvin Harris feat. Ne-Yo,128,harmonix annotations; Let's Go; Dance/Electronic; 225s
+spotify:track:1GjbTNFImFrjFsNdleDe78,0455_nevertearusapart,INXS,195,harmonix annotations; Never Tear Us Apart; Pop; 184s
+spotify:track:6jg5SRvdGxvJ0DzNV0UqEK,0474_pleasedontgo,Mike Posner,120,harmonix annotations; Please Don't Go; Dance/Electronic; 196s
+spotify:track:0bSTBRdN4iBepZ8bUcVq0S,0489_shakeyourbody,The Jacksons,118,harmonix annotations; Shake Your Body; Funk/Disco; 224s
+spotify:track:1MQrMQwfqjgOjXEUaN9AMd,0417_imtoosexy,Right Said Fred,122,harmonix annotations; I'm Too Sexy; Dance/Electronic; 170s
+spotify:track:3uWdANXLKA6AQdjUgTX4Kl,0493_somebodysheartbreak,Hunter Hayes,75,harmonix annotations; Somebody's Heartbreak; Pop; 227s
+spotify:track:4XRZbiVdsA5qv6f6qP70lS,0437_lovelikewoe,The Ready Set,90,harmonix annotations; Love Like Woe; Pop; 200s
+spotify:track:7lhjU4EUIW66x3GCqmYDgO,0407_humpinaround,Bobby Brown,110,harmonix annotations; Humpin' Around; Hip-Hop; 261s
+spotify:track:6vqx1aWPmQSf0z1pe8Q0fL,0333_allday,Cody Simpson,85,harmonix annotations; All Day; Pop; 187s
+spotify:track:4ahMBTDI9nan4tnECSGaON,0459_notoveryou,Gavin DeGraw,71,harmonix annotations; Not Over You; Pop; 215s
+spotify:track:7I6DOsv8I8mZC88CkvmrsE,0242_satisfaction,Benny Benassi,130,harmonix annotations; Satisfaction; Dance/Electronic; 143s
+spotify:track:3LVMaB7sTTUXIxBGvANk0t,0421_ittakestwo,Rob Base & DJ E-Z Rock,112,harmonix annotations; It Takes Two; Hip-Hop; 212s
+spotify:track:1YlXf5Fo97F0U2bTyos6cB,0429_kissinu,Miranda Cosgrove,110,harmonix annotations; Kissin U; Pop; 197s
+spotify:track:7ycpHuhscyBZ4GSMlpcAV7,0400_heatofthemoment,Asia,137,harmonix annotations; Heat of the Moment; Pop; 230s
+spotify:track:3n64TCuIeKNNtolOyUjfGf,0468_openarms,Journey,102,harmonix annotations; Open Arms; Pop; 199s
+spotify:track:5aTsxlQlq0vIedDWZoqMWN,0434_lights,Ellie Goulding,120,harmonix annotations; Lights; Pop; 210s
+spotify:track:16Of7eeW44kt0a1M0nitHM,0327_youmakemefeel,Cobra Starship feat. Sabi,132,harmonix annotations; You Make Me Feel...; Dance/Electronic; 215s
+spotify:track:7AmYqCQrdV7czyiMvYKrGs,0409_idontlikeyou,Eva Simons,128,harmonix annotations; I Don't Like You; Pop; 252s
+spotify:track:6nDxey4BUCihQAN5w4NVcF,0355_brokenhearted,Karmin,120,harmonix annotations; Brokenhearted; Pop; 226s
+spotify:track:4bLv1YdZgkp2WHEdzJdtWM,0469_ordinaryworld,Duran Duran,70,harmonix annotations; Ordinary World; Pop; 281s
+spotify:track:56GbZVwxMdf1DENCluYS8A,0367_dontdreamitsover,Crowded House,81,harmonix annotations; Don't Dream It's Over; Pop; 238s
+spotify:track:2DU0pz7ipQ3LmRO3ViTbyB,0363_darkside,Kelly Clarkson,119,harmonix annotations; Dark Side; Dance/Electronic; 222s
+spotify:track:01pi9sWxKZLkzthvWKYdyJ,0416_impossible,Shontelle,90,harmonix annotations; Impossible (main); Pop; 224s
+spotify:track:5h2sBwpUSAndjObfU3ti2r,0496_sparksfly,Taylor Swift,115,harmonix annotations; Sparks Fly; Pop; 262s
+spotify:track:3sP3c86WFjOzHHnbhhZcLA,0393_giveyourheartabreak,Demi Lovato,123,harmonix annotations; Give Your Heart a Break; Pop; 205s
+spotify:track:1CbaIWkZ0VFFMvvCSS422W,0350_blowme,P!nk,114,harmonix annotations; Blow Me (One Last Kiss); Pop; 230s
+spotify:track:03tqyYWC9Um2ZqU0ZN849H,0456_nohands,Waka Flocka Flame feat. Roscoe Dash & Wale,65,harmonix annotations; No Hands; Hip-Hop; 263s
+spotify:track:170llviTLioToIjQ6qkYr0,0447_mindyourmanners,Chiddy Bang,93,harmonix annotations; Mind Your Manners; Hip-Hop; 195s
+spotify:track:2EeKI8uO93OxtjxlmAqGux,0351_blowup,Sammy Adams,83,harmonix annotations; Blow Up; Hip-Hop; 176s
+spotify:track:4AzRVhbDkK6pqW03h5u34I,0454_myohmy,Tristan Prettyman,96,harmonix annotations; My Oh My; Pop; 218s
+spotify:track:6rafll82AMlIYm0Ab65QG6,0035_boyfriend,Justin Bieber,97,harmonix annotations; Boyfriend; Pop; 173s
+spotify:track:5TgD3Wh5ZUZnUU4tmVvJbx,0420_itsrainingmen,The Weather Girls,137,harmonix annotations; It's Raining Men; Pop; 212s
+spotify:track:4EFkvOhgAmlHEfDfvfSoh5,0111_girlsonfilm,Duran Duran,131,harmonix annotations; Girls on Film; Pop; 212s
+spotify:track:4G4I97YBXVj9MIQS1UXcgr,0371_downunder,Men at Work,105,harmonix annotations; Down Under; Pop; 218s
+spotify:track:5BOm5Xz2rCsK0hf81Soy72,0435_lookatmenow,Chris Brown feat. Lil Wayne & Busta Rhymes,73,harmonix annotations; Look at Me Now; Hip-Hop; 223s
+spotify:track:6wZYWlYaAKe4qJUSSoBpQT,0452_myfirstkiss,3OH!3 feat. Ke$ha,138,harmonix annotations; My First Kiss; Hip-Hop; 193s
+spotify:track:6cpk00i5TxCqSeqNi2HuIe,0463_onemorenight,Maroon 5,93,harmonix annotations; One More Night; Pop; 219s
+spotify:track:5zpDHEU12zATwLGvozxPw2,0433_lighters,Bad Meets Evil feat. Bruno Mars,90,harmonix annotations; Lighters; Pop; 303s
+spotify:track:455AfCsOhhLPRc68sE01D8,0430_lastfridaynight,Katy Perry,126,harmonix annotations; Last Friday Night (T.G.I.F.); Pop; 230s
+spotify:track:6QSHPsmchuqExhbH54mJCq,0466_onthedarkside,Beaver Brown,174,harmonix annotations; On the Dark Side; Pop; 164s
+spotify:track:2V4bv1fNWfTcyRJKmej6Sj,0360_coolerthanme,Mike Posner,130,harmonix annotations; Cooler Than Me; Pop; 213s
+spotify:track:62R99zZqZGe1akoS18TFEI,0401_hello,Lionel Richie with Jennifer Nettles,128,harmonix annotations; Hello; Dance/Electronic; 270s
+spotify:track:2fdd8W8eTym1gWO1dl1nxo,0395_gold,Britt Nicole,96,harmonix annotations; Gold; Pop; 179s
+spotify:track:6Iocm6VMu6bVNYwiDoyQFW,0359_cominghome,Diddy - Dirty Money feat. Skylar Grey,84,harmonix annotations; Coming Home; Hip-Hop; 238s
+spotify:track:3U72sro6TndZVmmHTUgUoc,0348_blackout,Breathe Carolina,122,harmonix annotations; Blackout; Pop; 208s
+spotify:track:4sM3h7MMeIX4YNWzmYI8Uz,0368_dontwakemeup,Chris Brown,128,harmonix annotations; Don't Wake Me Up; Pop; 221s
+spotify:track:0nV0xFUlRLRpjI5XLlrEK2,0485_rollinginthedeep,Adele,105,harmonix annotations; Rolling in the Deep; Pop; 227s
+spotify:track:32ZiBVNNbnRWEgnxVHLCmN,0403_heybaby,Pitbull feat. T-Pain,128,harmonix annotations; Hey Baby (Drop It to the Floor); Dance/Electronic; 204s
+spotify:track:4QCVvLRNP45j83odN8Gzml,0418_inthedark,Dev,124,harmonix annotations; In the Dark; Hip-Hop; 226s
+spotify:track:15JINEqzVMv3SvJTAXAKED,0439_lovethewayyoulie,Eminem feat. Rihanna,87,harmonix annotations; Love the Way You Lie; Hip-Hop; 263s
+spotify:track:6mbO00c5uqrRosRjAyuZeE,0370_downonme,Jeremih feat. 50 Cent,80,harmonix annotations; Down on Me; Hip-Hop; 228s
+spotify:track:51Q6EFkjizQdcNVbdJUY6d,0391_givemeallyourluvin,Madonna feat. Nicki Minaj & M.I.A.,145,harmonix annotations; Give Me All Your Luvin'; Dance/Electronic; 202s
+spotify:track:6nek1Nin9q48AVZcWs9e9D,0471_paradise,Coldplay,70,harmonix annotations; Paradise; Pop; 278s
+spotify:track:03UrZgTINDqvnUMbbIMhql,0388_gangnamstyle,PSY,133,harmonix annotations; Gangnam Style; Dance/Electronic; 219s
+spotify:track:6wN4nT2qy3MQc098yL3Eu9,0364_deuces,Chris Brown feat. Tyga & Kevin McCall,74,harmonix annotations; Deuces; Hip-Hop; 276s
+spotify:track:7eeox2X9HIeLVcjNIZ9aUI,0398_goodtime,Owl City feat. Carly Rae Jepsen,126,harmonix annotations; Good Time; Pop; 201s
+spotify:track:6Wc75Sa72xjCaAlMbHIVBb,0460_numb,Usher,130,harmonix annotations; Numb; Dance/Electronic; 219s
+spotify:track:1AhoD34STbOyAu96vx5aFm,0334_alltherightplaces,Zach Heckendorf,94,harmonix annotations; All the Right Places; Pop; 203s
+spotify:track:6oV12A5xN7SGfnOg5AmyiB,0004_abc,The Jackson 5,94,harmonix annotations; ABC; Pop-Rock; 180s
+spotify:track:5cCAZS9VhLGEDV4NCfieeg,0423_iwannago,Britney Spears,130,harmonix annotations; I Wanna Go; Dance/Electronic; 210s
+spotify:track:5dTCBdc4SxJOrX0cBhMdzk,0478_prayforyou,Jaron and the Long Road to Love,70,harmonix annotations; Pray for You; Pop; 185s
+spotify:track:7ruHhE9NkKEQxi2dQAxNmv,0443_magic,B.o.B feat. Rivers Cuomo,165,harmonix annotations; Magic; Pop; 195s
+spotify:track:1gv4xPanImH17bKZ9rOveR,0480_raiseyourglass,P!nk,122,harmonix annotations; Raise Your Glass; Dance/Electronic; 202s
+spotify:track:00soMsD7nQ2Uy5O0aWI1c7,0369_dontyouworrychild,Swedish House Mafia feat. John Martin,130,harmonix annotations; Don't You Worry Child; Pop; 211s
+spotify:track:3vjXHvqAOhgGrK7qw3N5Xr,0340_backintime,Pitbull,127,harmonix annotations; Back in Time; Hip-Hop; 206s
+spotify:track:3ZdJffjzJWFimSQyxgGIxN,0424_justadream,Nelly,90,harmonix annotations; Just a Dream; Hip-Hop; 237s
+spotify:track:6tS3XVuOyu10897O3ae7bi,0356_californiagurls,Katy Perry,124,harmonix annotations; California Gurls; Dance/Electronic; 234s
+spotify:track:0zh94d6hzJfqznRVqeROYx,0392_givemeyourhand,The Ready Set,126,harmonix annotations; Give Me Your Hand (Best Song Ever); Dance/Electronic; 227s
+spotify:track:0tgnTzjIkj8mVVEh0SNH0t,0487_secrets,OneRepublic,74,harmonix annotations; Secrets; Pop; 224s
+spotify:track:0l4DTppOxy7NUaEcwXuOb6,0338_animal,Neon Trees,150,harmonix annotations; Animal; Pop; 212s
+spotify:track:1qhVcTf1xTybhfqeh4ILFM,0490_showme,Jessica Sutta,128,harmonix annotations; Show Me; Dance/Electronic; 224s
+spotify:track:3b41uzbEK5QDlqsoOCufag,0237_run,Gnarls Barkley,149,harmonix annotations; Run (I'm a Natural Disaster); Pop; 160s
+spotify:track:3VA8T3rNy5V24AXxNK5u9E,0428_kingofanything,Sara Bareilles,119,harmonix annotations; King of Anything; Pop; 207s
+spotify:track:04oEinLZZiPxeKyGl0xJWz,0458_notorious,Duran Duran,106,harmonix annotations; Notorious; Funk/Disco; 239s
+spotify:track:6DHTZ6CqZQH3dcs9yIxajP,0281_theedgeofglory,Kelly Marie,128,harmonix annotations; Feels Like I'm in Love; Pop; 163s
+spotify:track:7fLzbEOBOae9lUnOwr7Tse,0445_memories,David Guetta feat. Kid Cudi,130,harmonix annotations; Memories; Dance/Electronic; 210s
+spotify:track:63qMz3q3SUpeNBIEH4qAPU,0442_lullaby,Shawn Mullins,80,harmonix annotations; Lullaby; Pop; 272s
+spotify:track:21lRtsRuBKUKnS9jCMdHKV,0383_feelsoclose,Calvin Harris,128,harmonix annotations; Feel So Close (radio edit); Pop; 204s
+spotify:track:58yFHpDXgqHJjKF0sE3ia9,0218_policyoftruth,Depeche Mode,113,harmonix annotations; Policy of Truth; Dance/Electronic; 309s
+spotify:track:5kcE7pp02ezLZaUbbMv3Iq,0477_poundthealarm,Nicki Minaj,125,harmonix annotations; Pound the Alarm; Hip-Hop; 205s
+spotify:track:0ZsfbEMNnedpOVxwdB8wMq,0488_september,Daughtry,75,harmonix annotations; September; Pop; 236s
+spotify:track:7xk3quedy8g5gfBbesZVbt,0389_gettinoveryou,David Guetta & Chris Willis,130,harmonix annotations; Gettin' Over You; Dance/Electronic; 187s
+spotify:track:5FbfPxWMDM3yEnNUJS0HLQ,0397_goodlife,OneRepublic,95,harmonix annotations; Good Life; Pop; 252s
+spotify:track:2LEF1A8DOZ9wRYikWgVlZ8,0396_goodfeeling,Flo Rida,129,harmonix annotations; Good Feeling; Hip-Hop; 248s
+spotify:track:2O9eBQhcBssCo9G6oEqrim,0294_tonighttonight,Hot Chelle Rae,100,harmonix annotations; Tonight Tonight; Pop; 208s
+spotify:track:0pwYLVXVknPSGUQb39cePC,0339_aslongasyouloveme,Justin Bieber feat. Big Sean,70,harmonix annotations; As Long as You Love Me; Pop; 229s
+spotify:track:4AYX69oFP3UOS1CFmV9UfO,0353_bottomsup,Trey Songz feat. Nicki Minaj,74,harmonix annotations; Bottoms Up; Hip-Hop; 242s
+spotify:track:0Oe49j06Bjrxs8PltuVeaW,0467_onthefloor,Jennifer Lopez,130,harmonix annotations; On the Floor; Dance/Electronic; 230s
+spotify:track:2fQxE0jVrjNMT9oJAXtSJR,0366_domino,Jessie J,128,harmonix annotations; Domino; Pop; 231s
+spotify:track:3TWItyi0n7HO56vNrFVpqw,0375_dynamite,Taio Cruz,120,harmonix annotations; Dynamite (Promo Only clean edit); Dance/Electronic; 215s
+spotify:track:7CHIJREUYyM7vndBQE6iMy,0451_mrknowitall,Kelly Clarkson,96,harmonix annotations; Mr. Know It All; Pop; 232s
+spotify:track:4OEJyJiOoFg7KJtCKeh8t1,0472_partofme,Katy Perry,130,harmonix annotations; Part of Me; Pop; 215s
+spotify:track:1HHeOs6zRdF8Ck58easiAY,0332_alejandro,Lady Gaga,99,harmonix annotations; Alejandro; Dance/Electronic; 274s
+spotify:track:6GyFP1nfCDB8lbD2bG0Hq9,0446_midnightcity,M83,105,harmonix annotations; Midnight City; Pop; 243s
+spotify:track:19jd1ffgFMwGpafuoqImry,0426_justcantgetenough,The Black Eyed Peas,94,harmonix annotations; Just Can't Get Enough; Hip-Hop; 222s
+spotify:track:2gXHupBhPi9wG5TxyWWqvQ,0386_footloose,Kenny Loggins,174,harmonix annotations; Footloose (from the Paramount Film ''Footloose''); Pop; 220s
+spotify:track:3DamFFqW32WihKkTVlwTYQ,0094_fireflies,Owl City,90,harmonix annotations; Fireflies; Pop; 228s
+spotify:track:4rwuOirhmby7R1p53UiDEP,0354_brandnewday,Trevor Hall,117,harmonix annotations; Brand New Day (NOW What's Next Bonus Track); Pop; 213s
+spotify:track:3yWAyRHfclztY1TzF2gAUD,0337_alwayssomethingthere,Naked Eyes,150,harmonix annotations; Always Something There to Remind Me; Pop; 219s
+spotify:track:5G2c6FsfTzgYUzageCmfXY,0465_onething,One Direction,126,harmonix annotations; One Thing; Pop; 197s
+spotify:track:651YfRrztn4yo9FFkyfCif,0415_illbewaiting,Michael Franti & Spearhead,97,harmonix annotations; I'll Be Waiting; Dance/Electronic; 230s
+spotify:track:0vbbwEUSkZf3oA1dLlIoFL,0481_reallove,Jody Watley,109,harmonix annotations; Real Love; Pop; 261s
+spotify:track:0M3HkE321xpCbCYqVKzr1q,0422_itwillrain,Bruno Mars,75,harmonix annotations; It Will Rain; Pop; 257s
+spotify:track:5gHISrWamQR5jI2K51ISbA,0249_sensualseduction,Snoop Dogg,120,harmonix annotations; Sexual Eruption; Hip-Hop; 240s
+spotify:track:7l7WdGENIV1PWiggclfSLN,0246_scenario,A Tribe Called Quest,101,harmonix annotations; Scenario; Hip-Hop; 252s
+spotify:track:6NZOWKI1dTedPd1sLKh1aR,0419_itgirl,Jason Derulo,92,harmonix annotations; It Girl; Pop; 191s
+spotify:track:4L2RePYSkrmjt8GRDhjTtn,0129_hotinherre,Nelly,107,harmonix annotations; Hot in Herre; Hip-Hop; 148s
+spotify:track:20I6sIOMTCkB6w7ryavxtO,0043_callmemaybe,Carly Rae Jepsen,120,harmonix annotations; Call Me Maybe; Pop; 193s
+spotify:track:68QyrSzpnoU04AAhE5z8lj,0470_ours,Taylor Swift,160,harmonix annotations; Ours; Pop; 245s
+spotify:track:5mTe0uGC1dHgym0kIS7NzL,0444_maybe,Sick Puppies,84,harmonix annotations; Maybe; Pop; 204s
+spotify:track:5uOmfhB5ma3WcfCxbvY2Qs,0329_youreajerk,New Boyz,98,harmonix annotations; You're a Jerk; Hip-Hop; 148s
+spotify:track:2n7cpI2UeigdLc14ylbfdm,0497_speakers,Days Difference,116,harmonix annotations; Speakers; Pop; 260s
+spotify:track:4ikAixBiUTwE7MSWGswTan,0124_hello,Martin Solveig,128,harmonix annotations; Hello; Dance/Electronic; 167s
+spotify:track:7BqBn9nzAq8spo5e7cZ0dJ,0427_justthewayyouare,Bruno Mars,109,harmonix annotations; Just the Way You Are; Pop; 220s
+spotify:track:0KAiuUOrLTIkzkpfpn9jb9,0373_driveby,Train,122,harmonix annotations; Drive By; Pop; 195s
+spotify:track:74jTexO94dFGyXGyeu8krd,0344_beautifullife,Ace of Base,134,harmonix annotations; Beautiful Life; Dance/Electronic; 221s
+spotify:track:5KYDPulw71N02ojE4VBKZg,0024_billionaire,Travie McCoy,87,harmonix annotations; Billionaire; Hip-Hop; 212s
+spotify:track:2Bz2Q1JNwwPj40T9AvzE7f,0167_makesomenoise,Beastie Boys,98,harmonix annotations; Make Some Noise; Hip-Hop; 210s
+spotify:track:4ZO4AMv1AMEKG89AZUl0DG,0022_betteroffalone,Alice DeeJay,137,harmonix annotations; Better Off Alone; Dance/Electronic; 166s
+spotify:track:7112WRQXlBGe4Os43yw8gV,0152_kingofrock,Run‐D.M.C.,98,harmonix annotations; King of Rock; Hip-Hop; 314s
+spotify:track:6sr234ERB6dyjX9ZcBi5aU,0341_baggageclaim,Miranda Lambert,81,harmonix annotations; Baggage Claim; Country; 197s
+spotify:track:6qnrmPzD5aCK4h5yCwM5YH,0402_herestous,Halestorm,80,harmonix annotations; Here's to Us; Country; 176s
+spotify:track:4NVgo2Ggjccffni3JlUxWQ,0335_allyourlife,The Band Perry,66,harmonix annotations; All Your Life; Country; 231s
+spotify:track:7pV3003ON09yv6snATkBYB,0119_gunpowderandlead,Miranda Lambert,94,harmonix annotations; Gunpowder & Lead; Country; 190s
+spotify:track:3qJQtLfi7ztIz7JYDrVHrg,0361_countrymustbecountrywide,Brantley Gilbert,84,harmonix annotations; Country Must Be Country Wide; Country; 215s
+spotify:track:45nKUC9WTdKZFQGa48ELJa,0382_fatherofmine,Everclear,97,harmonix annotations; Father of Mine; Rock; 234s
+spotify:track:4cKGldbhGJniI8BrB3K6tb,0381_everythingyouwant,Vertical Horizon,94,harmonix annotations; Everything You Want; Alternative; 257s
+spotify:track:1odk70HBNbdk4wU0Ja9JR7,0027_blackened,Metallica,190,harmonix annotations; Blackened; Metal; 402s
+spotify:track:4xanWVQIzdCf51mg8cd1cQ,0292_timeslikethese,Foo Fighters,145,harmonix annotations; Times Like These; Alternative; 267s
+spotify:track:6TVQV0vfaphB5chlmbZE3c,0482_redsolocup,Toby Keith,165,harmonix annotations; Red Solo Cup; Country; 224s
+spotify:track:2Xdatbm43IXEVi0wmKeJve,0336_alonewithyou,Jake Owen,109,harmonix annotations; Alone With You; Country; 211s
+spotify:track:3nlGByvetDcS1uomAoiBmy,0199_numberofthebeast2,Iron Maiden,200,harmonix annotations; The Number of the Beast; Metal; 290s
+spotify:track:26tcIBvdSiMYEOjvhIWbB5,0100_futureperfecttense,Sweet Billy Pilgrim,120,harmonix annotations; Future Perfect Tense; Indie Rock; 268s
+spotify:track:3QcFJl39Fxk33Caolg7Cga,0265_straightlines,Silverchair,128,harmonix annotations; Straight Lines; Rock; 259s
+spotify:track:42ZVk59gT4tMlrZmd8Ijxf,0142_indestructible,Disturbed,90,harmonix annotations; Indestructible; Metal; 278s
+spotify:track:7H5OQN4iv3cKE3ZNP5Mbct,0413_ifyoucouldonlysee,Tonic,95,harmonix annotations; If You Could Only See; Alternative; 263s
+spotify:track:6pjWON6NgnSv1nU5inUlaf,0038_bringmetolife,Evanescence,95,harmonix annotations; Bring Me to Life; Rock; 236s
+spotify:track:4VymMhILk4DSwghPkLUPVS,0058_criticalacclaim,Avenged Sevenfold,138,harmonix annotations; Critical Acclaim; Metal; 315s
+spotify:track:4KQJFpCcGqEEWrZtRiyJLf,0191_newslang,The Shins,130,harmonix annotations; New Slang; Indie Rock; 236s
+spotify:track:0DAjiINHQTnPnnY939Qyhw,0431_letitrain,David Nail,78,harmonix annotations; Let It Rain; Country; 222s
+spotify:track:1cktZnxiONH0hR6Q3DKy8h,0372_drinkinmyhand,Eric Church,113,harmonix annotations; Drink in My Hand; Country; 191s
+spotify:track:2iUmqdfGZcHIhS3b9E9EWq,0380_everybodytalks,Neon Trees,156,harmonix annotations; Everybody Talks; Rock; 177s
+spotify:track:7c1KTn1z8Gw8ouYdcF4qaG,0410_idontwantthisnighttoend,Luke Bryan,112,harmonix annotations; I Don't Want This Night to End; Country; 219s
