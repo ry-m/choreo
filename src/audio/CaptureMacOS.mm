@@ -7,6 +7,7 @@
 #import <CoreAudio/AudioHardwareTapping.h>
 #import <CoreAudio/CATapDescription.h>
 #import <Foundation/Foundation.h>
+#import <CoreAudio/HostTime.h>
 #include <vector>
 #include <cstdio>
 #include <cmath>
@@ -29,6 +30,38 @@ NSString* defaultOutputUID() {
     auto u = addr(kAudioDevicePropertyDeviceUID);
     if (AudioObjectGetPropertyData(dev, &u, 0, nullptr, &size, &uid) != noErr || !uid) return nil;
     return (__bridge_transfer NSString*)uid;
+}
+
+// How long after the system mixes a sample it reaches the speakers/headphones: device latency +
+// safety offset + I/O buffer + stream latency, in the output scope of the default device.
+double defaultOutputLatencySec() {
+    AudioObjectID dev = kAudioObjectUnknown;
+    UInt32 size = sizeof(dev);
+    auto a = addr(kAudioHardwarePropertyDefaultOutputDevice);
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &size, &dev) != noErr) return 0;
+    auto outProp = [&](AudioObjectPropertySelector sel) {
+        AudioObjectPropertyAddress pa{sel, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMain};
+        UInt32 v = 0, sz = sizeof(v);
+        return AudioObjectGetPropertyData(dev, &pa, 0, nullptr, &sz, &v) == noErr ? v : 0u;
+    };
+    UInt32 frames = outProp(kAudioDevicePropertyLatency) + outProp(kAudioDevicePropertySafetyOffset) +
+                    outProp(kAudioDevicePropertyBufferFrameSize);
+    // Stream latency of the first output stream.
+    AudioObjectPropertyAddress sa{kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMain};
+    UInt32 ssz = 0;
+    if (AudioObjectGetPropertyDataSize(dev, &sa, 0, nullptr, &ssz) == noErr && ssz >= sizeof(AudioObjectID)) {
+        std::vector<AudioObjectID> streams(ssz / sizeof(AudioObjectID));
+        if (AudioObjectGetPropertyData(dev, &sa, 0, nullptr, &ssz, streams.data()) == noErr) {
+            auto la = addr(kAudioStreamPropertyLatency);
+            UInt32 v = 0, sz = sizeof(v);
+            if (AudioObjectGetPropertyData(streams[0], &la, 0, nullptr, &sz, &v) == noErr) frames += v;
+        }
+    }
+    Float64 rate = 0;
+    size = sizeof(rate);
+    auto ra = addr(kAudioDevicePropertyNominalSampleRate);
+    if (AudioObjectGetPropertyData(dev, &ra, 0, nullptr, &size, &rate) != noErr || rate <= 0) rate = 48000;
+    return frames / rate;
 }
 
 // Core Audio process objects whose bundle ID starts with `prefix` (an app and its helpers).
@@ -121,9 +154,12 @@ public:
                 fprintf(stderr, "[choreo] warning: could not determine capture sample rate, assuming 48 kHz\n");
             }
 
+            outputLatency_ = defaultOutputLatencySec();
+            fprintf(stderr, "[choreo] output latency %.1f ms\n", outputLatency_ * 1000);
+
             err = AudioDeviceCreateIOProcIDWithBlock(&proc_, agg_, nullptr,
-                ^(const AudioTimeStamp*, const AudioBufferList* in, const AudioTimeStamp*, AudioBufferList*, const AudioTimeStamp*) {
-                    this->onAudio(in);
+                ^(const AudioTimeStamp*, const AudioBufferList* in, const AudioTimeStamp* inTime, AudioBufferList*, const AudioTimeStamp*) {
+                    this->onAudio(in, inTime);
                 });
             if (err != noErr || AudioDeviceStart(agg_, proc_) != noErr) {
                 fprintf(stderr, "[choreo] Failed to start tap IOProc (%d)\n", (int)err);
@@ -149,6 +185,7 @@ public:
     }
 
     double sampleRate() const override { return sampleRate_; }
+    double outputLatencySec() const override { return outputLatency_; }
     std::string name() const override {
         return bundle_.empty() ? "System audio (Core Audio tap)"
                                : "App audio: " + bundle_ + (mute_ ? " (muted)" : "");
@@ -156,8 +193,12 @@ public:
 
 private:
     // Real-time thread: downmix to mono and push. Handles interleaved or planar float32.
-    void onAudio(const AudioBufferList* in) {
+    void onAudio(const AudioBufferList* in, const AudioTimeStamp* inTime) {
         if (!in || in->mNumberBuffers == 0) return;
+        if (inTime && (inTime->mFlags & kAudioTimeStampHostTimeValid))
+            publishClock(AudioConvertHostTimeToNanos(inTime->mHostTime));
+        else
+            publishClock(nowNs());
         const AudioBuffer& b0 = in->mBuffers[0];
         if (in->mNumberBuffers == 1) {
             UInt32 ch = b0.mNumberChannels ? b0.mNumberChannels : 1;
@@ -173,7 +214,7 @@ private:
                     for (UInt32 c = 0; c < ch; ++c) s += src[(done + i) * ch + c];
                     mono[i] = s / ch;
                 }
-                out_->write(mono, n);
+                push(out_, mono, n);
                 done += n;
             }
         } else {
@@ -188,7 +229,7 @@ private:
                     for (UInt32 c = 0; c < nb; ++c) s += static_cast<const float*>(in->mBuffers[c].mData)[done + i];
                     mono[i] = s / nb;
                 }
-                out_->write(mono, n);
+                push(out_, mono, n);
                 done += n;
             }
         }
@@ -201,6 +242,7 @@ private:
     AudioObjectID agg_ = kAudioObjectUnknown;
     AudioDeviceIOProcID proc_ = nullptr;
     double sampleRate_ = 48000.0;
+    double outputLatency_ = 0.0;
 };
 
 } // namespace

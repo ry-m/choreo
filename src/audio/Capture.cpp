@@ -35,7 +35,12 @@ private:
         (void)additional;
         self->tmp_.resize(avail / sizeof(float));
         int got = SDL_GetAudioStreamData(s, self->tmp_.data(), avail);
-        if (got > 0) self->out_->write(self->tmp_.data(), got / sizeof(float));
+        if (got > 0) {
+            size_t n = got / sizeof(float);
+            // The newest sample was captured roughly now; the buffer started n samples earlier.
+            self->publishClock(nowNs() - uint64_t(n / 48000.0 * 1e9));
+            self->push(self->out_, self->tmp_.data(), n);
+        }
     }
     SDL_AudioStream* stream_ = nullptr;
     RingBuffer* out_ = nullptr;

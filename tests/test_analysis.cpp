@@ -2,6 +2,7 @@
 // that the analyser finds the tempo and lands its beats within ±70 ms (standard F-measure window).
 #include "analysis/Analyzer.h"
 #include "analysis/FFT.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -243,6 +244,61 @@ static void testSongChange(bool gap) {
     CHECK(lock >= 0 && lock < (gap ? 5.0 : 8.0), "song change %s: re-lock took %.1fs", gap ? "with gap" : "hard cut", lock);
 }
 
+// Signed timing error of predicted beats vs. true beat times (after `from` seconds):
+// median offset (+ = late), spread (median absolute deviation), and share within ±25 ms.
+struct PhaseStats { double medianMs, madMs, within25; int n; };
+static PhaseStats phaseStats(const std::vector<double>& est, const std::vector<double>& ref, double from) {
+    std::vector<double> d;
+    for (double e : est) {
+        if (e < from) continue;
+        double best = 1e9;
+        for (double r : ref) if (std::fabs(e - r) < std::fabs(best)) best = e - r;
+        if (std::fabs(best) < 0.2) d.push_back(best * 1000);
+    }
+    if (d.empty()) return {0, 0, 0, 0};
+    std::vector<double> s = d; std::sort(s.begin(), s.end());
+    double med = s[s.size() / 2];
+    std::vector<double> dev; for (double x : d) dev.push_back(std::fabs(x - med));
+    std::sort(dev.begin(), dev.end());
+    int in = 0; for (double x : d) if (std::fabs(x) <= 25) ++in;
+    return {med, dev[dev.size() / 2], double(in) / d.size(), int(d.size())};
+}
+
+// Predicted beats must land on the true beat times, not just within the ±70 ms F-measure window.
+static void testPhaseAccuracy() {
+    const double sr = 48000;
+    for (double bpm : {100.0, 128.0, 174.0}) {
+        Track t = synth(bpm, 40, sr);
+        Analyzer a(sr);
+        a.recordEvents = true;
+        for (size_t i = 0; i < t.audio.size(); i += 480) a.process(t.audio.data() + i, std::min<size_t>(480, t.audio.size() - i));
+        PhaseStats p = phaseStats(a.beatTimes, t.beats, 10.0);
+        std::printf("  phase @%.0f: median offset %+.1f ms, spread %.1f ms, within ±25 ms %.0f%% (n=%d)\n",
+                    bpm, p.medianMs, p.madMs, p.within25 * 100, p.n);
+        CHECK(std::fabs(p.medianMs) < 15, "phase @%.0f: beats are %+.1f ms off on average", bpm, p.medianMs);
+        CHECK(p.within25 > 0.8, "phase @%.0f: only %.0f%% of beats within ±25 ms", bpm, p.within25 * 100);
+    }
+}
+
+// stateAt(): looking back returns the snapshot from that moment; looking ahead advances the
+// beat phase by exactly the elapsed beats.
+static void testStateAt() {
+    const double sr = 48000;
+    Track t = synth(128, 20, sr);
+    Analyzer a(sr);
+    for (size_t i = 0; i < t.audio.size(); i += 480) a.process(t.audio.data() + i, std::min<size_t>(480, t.audio.size() - i));
+    const MusicState& now = a.state();
+    MusicState past = a.stateAt(now.time - 0.25);
+    CHECK(std::fabs(past.time - (now.time - 0.25)) < 0.012, "stateAt(-250ms) returned time %.3f, expected %.3f", past.time, now.time - 0.25);
+    MusicState ahead = a.stateAt(now.time + 0.3);
+    double expect = std::fmod(now.beatPhase + 0.3 * now.bpm / 60.0, 1.0);
+    double err = std::fabs(ahead.beatPhase - expect); err = std::min(err, 1 - err);
+    CHECK(err < 1e-3, "stateAt(+300ms) phase %.4f, expected %.4f", ahead.beatPhase, expect);
+    int beatsAhead = int(std::floor(now.beatPhase + 0.3 * now.bpm / 60.0));
+    CHECK(ahead.beatCount == now.beatCount + beatsAhead, "stateAt(+300ms) beatCount %d, expected %d", ahead.beatCount, now.beatCount + beatsAhead);
+    std::printf("  stateAt: look-back and prediction consistent\n");
+}
+
 int main() {
     testFFT();
     for (double bpm : {100.0, 124.0, 128.0, 140.0}) testTempo(bpm);
@@ -252,6 +308,8 @@ int main() {
     testSongChange(true);
     testSongChange(false);
     testSongChangeRelated();
+    testPhaseAccuracy();
+    testStateAt();
     std::printf(failures ? "%d failure(s)\n" : "all tests passed\n", failures);
     return failures ? 1 : 0;
 }

@@ -122,6 +122,17 @@ Run 3 (offline, on 80 live recordings of real songs; 40 of them held out from tu
   intro (88), and slow locks caused by long beatless intros. Further gains likely need a learned onset/beat
   activation (M5), not more heuristics.
 
+A/V sync (latency compensation):
+- Capture publishes (sample index ↔ host time) pairs. The output device's latency is read from Core Audio.
+  Each frame shows `Analyzer::stateAt(heard time)`: earlier moments replay the exact recorded state
+  (Bluetooth), later moments predict the beat forward (speakers).
+- `--calibrate`: Choreo plays a 120 BPM click, hears it through system capture and flashes on each beat.
+  `[` / `]` shift the visuals 5 ms (saved in the app-data folder).
+- `--tap`: tap SPACE on the beat. Every 8 taps it reports whether Choreo is early or late, and by how much, and how many taps were
+  off-beat. This is the ground truth for phase, because kick-onset references are contaminated by bass lines.
+- Synthetic phase accuracy: beats are 5 ms early, with a 1.5 ms spread. On real music, the nearest kick sits a median of 8 ms
+  from the predicted beat. Some songs (Gosh, Starboy, Shake It Off, Closer) may lock half a beat out; to be confirmed by tapping.
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 

@@ -136,6 +136,7 @@ void Renderer::render(const MusicState& m, float dt) {
         {m.bass, m.mid, m.treble, m.loudness},
         {m.energyRatio, m.brightness, m.bpm, float(m.beatCount)},
         {travel_, twist_, hue_, flash_},
+        {calibration_ ? 1.f : 0.f, 0, 0, 0},
     };
 
     // 1) Raymarch into the top-left rw_ x rh_ region of the scene texture.

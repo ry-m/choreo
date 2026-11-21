@@ -129,7 +129,8 @@ void Analyzer::analyzeHop() {
     // --- Onsets -------------------------------------------------------------------
     const int gap50ms = std::max(1, int(0.05 * fps_)), gap100ms = std::max(1, int(0.1 * fps_));
     bool onsetAll = pickPeak(all_, fAll, gap50ms, 0.08f);
-    pickPeak(kick_, fKick, gap100ms, 0.12f);
+    bool kickOnset = pickPeak(kick_, fKick, gap100ms, 0.12f);
+    if (kickOnset && recordEvents) kickTimes.push_back(state_.time - dt);
     pickPeak(snare_, fSnare, gap100ms, 0.12f);
     pickPeak(hat_, fHat, gap50ms, 0.10f);
     if (onsetAll && recordEvents) onsetTimes.push_back(state_.time - dt);
@@ -217,6 +218,40 @@ void Analyzer::analyzeHop() {
     state_.hat = hat_.pulse;     hat_.pulse *= std::exp(-dt / 0.05f);
     state_.onset = std::min(1.f, all_.prev);
     if (state_.beat) state_.beatPulse = 1.f; else state_.beatPulse *= decayBeat;
+
+    if (history_.empty()) history_.resize(size_t(5.5 * fps_));
+    history_[historyPos_] = state_;
+    historyPos_ = (historyPos_ + 1) % history_.size();
+    historyCount_ = std::min(historyCount_ + 1, history_.size());
+}
+
+MusicState Analyzer::stateAt(double t) const {
+    if (historyCount_ == 0) return state_;
+    const double dt = t - state_.time;
+    if (dt < 0) {
+        // Look back: hops are evenly spaced, so index directly.
+        size_t back = size_t(std::lround(-dt * fps_));
+        if (back >= historyCount_) back = historyCount_ - 1;
+        return history_[(historyPos_ + history_.size() - 1 - back) % history_.size()];
+    }
+    // Predict forward from the newest state.
+    MusicState s = state_;
+    s.time = t;
+    double beats = s.beatPhase + dt * s.bpm / 60.0;
+    int whole = int(std::floor(beats));
+    s.beatPhase = float(beats - whole);
+    if (s.beatPresent && whole > 0) {
+        s.beatCount += whole;
+        s.beat = true;
+        s.beatPulse = float(std::exp(-(s.beatPhase * 60.0 / s.bpm) / 0.18));
+    } else {
+        s.beat = false;
+        s.beatPulse *= float(std::exp(-dt / 0.18));
+    }
+    s.kick *= float(std::exp(-dt / 0.10));
+    s.snare *= float(std::exp(-dt / 0.10));
+    s.hat *= float(std::exp(-dt / 0.05));
+    return s;
 }
 
 // Probable song change while music keeps playing (hard cut / DJ mix): keep the current beat
@@ -422,17 +457,15 @@ void Analyzer::updateBeatPhase() {
             state_.beat = true;
             ++state_.beatCount;
             lastBeatHop_ = hopIndex_;
-            if (recordEvents) beatTimes.push_back(state_.time - phase_ * P / fps_);
+            if (recordEvents) { beatTimes.push_back(state_.time - phase_ * P / fps_); beatBpms.push_back(state_.bpm); }
         }
     } else if (phase_ < 0) {
         phase_ += 1.0;
     }
 
-    // Publish a phase that is latency-compensated to "now": the analysed frame centre is
-    // kFrameSize/2 samples behind the newest audio.
-    double lookahead = (kFrameSize / 2.0) / sr_ * state_.bpm / 60.0;
-    double p = phase_ + lookahead;
-    state_.beatPhase = float(p - std::floor(p));
+    // Phase as of state_.time (the analysed frame centre). Prediction to the moment the
+    // listener hears the audio happens in stateAt(), which knows the actual latencies.
+    state_.beatPhase = float(phase_ - std::floor(phase_));
 }
 
 } // namespace choreo

@@ -16,6 +16,7 @@ struct FrameUniforms {
     float spec[4];     // bass, mid, treble, loudness
     float misc[4];     // energyRatio, brightness, bpm, beatCount
     float motion[4];   // travel, twist, hue, flash
+    float mode[4];     // x: 1 = calibration display
 };
 
 class Renderer {
@@ -27,6 +28,8 @@ public:
 
     // Frame-time budget used by dynamic resolution (the app also caps to this rate).
     void setTargetFps(float fps) { targetFps_ = fps; }
+    // Calibration display: plain full-screen flash on each beat plus a beat-phase bar.
+    void setCalibrationMode(bool on) { calibration_ = on; }
     float renderScale() const { return scale_; }
     int renderWidth() const { return rw_; }
     int renderHeight() const { return rh_; }
@@ -52,6 +55,7 @@ private:
     // Motion integrators: visuals accumulate music-driven velocity so they never jump.
     float time_ = 0, travel_ = 0, twist_ = 0, hue_ = 0, flash_ = 0;
     int lastBeat_ = 0;
+    bool calibration_ = false;
 };
 
 } // namespace choreo

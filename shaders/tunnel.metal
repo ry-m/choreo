@@ -8,6 +8,7 @@ struct Uniforms {
     float4 spec;     // bass, mid, treble, loudness
     float4 misc;     // energyRatio, brightness, bpm, beatCount
     float4 motion;   // travel, twist, hue, flash
+    float4 mode;     // x: 1 = calibration display
 };
 
 struct VOut { float4 pos [[position]]; float2 uv; };
@@ -66,7 +67,20 @@ static Hit map(float3 p, constant Uniforms& u) {
     return h;
 }
 
+// Calibration display: the whole screen flashes white on each beat (sharp attack, ~80 ms
+// decay) and a bar sweeps across once per beat, so flash vs. click timing is easy to judge.
+static float4 calibrationView(float2 uv01, constant Uniforms& u) {
+    float since = u.resTime.w * 60.0 / max(u.misc.z, 1.0);        // seconds since the beat
+    float flash = exp(-since / 0.08);
+    float3 col = float3(flash);
+    float barX = u.resTime.w;
+    col += float3(0.1, 0.6, 1.0) * step(abs(uv01.x - barX), 0.004) * step(0.9, uv01.y);
+    col = mix(col, float3(0.15), step(uv01.y, 0.02) * step(0.5, fract(uv01.x * 4.0)));
+    return float4(col, 1.0);
+}
+
 fragment float4 fmain(VOut in [[stage_in]], constant Uniforms& u [[buffer(0)]]) {
+    if (u.mode.x > 0.5) return calibrationView(in.uv, u);
     float2 res = u.resTime.xy;
     float2 uv = (in.uv * res - 0.5 * res) / res.y;
     float kick = u.beat.y, snare = u.beat.z, hat = u.beat.w, beatPulse = u.beat.x;

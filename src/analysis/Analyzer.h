@@ -23,11 +23,18 @@ public:
     void process(const float* samples, size_t n);
 
     const MusicState& state() const { return state_; }
+
+    // The state as of audio time t (seconds, same base as state().time). If t is older than the
+    // newest analysed hop, it's the snapshot recorded at that moment (exact, including detected
+    // hits). If t is newer, it's the newest state with the beat predicted forward. This lets the
+    // display show what the listener is hearing right now, whatever the output latency.
+    MusicState stateAt(double t) const;
     double hopsPerSecond() const { return fps_; }
 
     // Offline instrumentation.
     bool recordEvents = false;
-    std::vector<double> beatTimes, onsetTimes, changeTimes;
+    std::vector<double> beatTimes, onsetTimes, kickTimes, changeTimes;
+    std::vector<float> beatBpms;      // tempo at each recorded beat
 
 private:
     void analyzeHop();
@@ -93,6 +100,8 @@ private:
     float bassMax_ = 1e-6f, midMax_ = 1e-6f, trebMax_ = 1e-6f;
 
     MusicState state_;
+    std::vector<MusicState> history_;  // ring of recent per-hop states (~5 s)
+    size_t historyPos_ = 0, historyCount_ = 0;
 };
 
 } // namespace choreo

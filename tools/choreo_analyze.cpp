@@ -3,8 +3,10 @@
 //   --timeline   one line per second: tempo, confidence, pulse clarity, beat presence
 //   --ref-bpm X  score tempo accuracy against a known tempo (see tests/reference/tempos.csv)
 //   --from S     only score from S seconds on (e.g. the second song of a joined pair)
+//   --phase      beat-phase report: predicted beats vs. detected kick onsets (no ground truth needed)
 #include "Wav.h"
 #include "analysis/Analyzer.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -16,12 +18,14 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: %s file [--beats] [--onsets] [--timeline] [--ref-bpm X]\n", argv[0]);
         return 1;
     }
-    bool printBeats = false, printOnsets = false, timeline = false;
+    bool printBeats = false, printOnsets = false, timeline = false, phase = false, printKicks = false;
     double refBpm = 0, scoreFrom = 0;
     for (int i = 2; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--beats")) printBeats = true;
         else if (!std::strcmp(argv[i], "--onsets")) printOnsets = true;
         else if (!std::strcmp(argv[i], "--timeline")) timeline = true;
+        else if (!std::strcmp(argv[i], "--phase")) phase = true;
+        else if (!std::strcmp(argv[i], "--kicks")) printKicks = true;
         else if (!std::strcmp(argv[i], "--ref-bpm") && i + 1 < argc) refBpm = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--from") && i + 1 < argc) scoreFrom = std::atof(argv[++i]);
     }
@@ -66,7 +70,35 @@ int main(int argc, char** argv) {
     } else if (refBpm > 0) {
         std::printf("ref %.1f BPM: beat never detected as present\n", refBpm);
     }
-    if (printBeats) for (double t : a.beatTimes) std::printf("%.4f\n", t);
+    if (phase) {
+        // For each predicted beat (after --from and after the first 8 s of a lock), find the nearest
+        // kick onset within half a beat. "on" = within ±40 ms; "off-beat" = the nearest kick is
+        // closer to the half-beat point, which means we're locked half a beat out.
+        std::vector<double> d; int on = 0, offbeat = 0, considered = 0;
+        for (size_t i = 0; i < a.beatTimes.size(); ++i) {
+            double b = a.beatTimes[i], P = 60.0 / a.beatBpms[i];
+            if (b < std::max(scoreFrom, 8.0)) continue;
+            double best = 1e9;
+            for (double k : a.kickTimes) if (std::fabs(k - b) < std::fabs(best)) best = k - b;
+            if (std::fabs(best) > P / 2) continue;
+            ++considered;
+            if (std::fabs(best) > P / 4) { ++offbeat; continue; }
+            d.push_back(best * 1000);
+            if (std::fabs(best) <= 0.04) ++on;
+        }
+        std::sort(d.begin(), d.end());
+        double med = d.empty() ? 0 : d[d.size() / 2];
+        std::vector<double> dev; for (double x : d) dev.push_back(std::fabs(x - med));
+        std::sort(dev.begin(), dev.end());
+        std::printf("phase: beats with a nearby kick %d; kick-on-beat %.0f%%; off-beat %.0f%%; median kick-minus-beat %+.1f ms; spread %.1f ms\n",
+                    considered, considered ? 100.0 * on / considered : 0, considered ? 100.0 * offbeat / considered : 0,
+                    med, dev.empty() ? 0 : dev[dev.size() / 2]);
+    }
+    if (printBeats) {
+        std::printf("#beats\n");
+        for (size_t i = 0; i < a.beatTimes.size(); ++i) std::printf("%.4f %.2f\n", a.beatTimes[i], a.beatBpms[i]);
+    }
+    if (printKicks) { std::printf("#kicks\n"); for (double t : a.kickTimes) std::printf("%.4f\n", t); }
     if (printOnsets) for (double t : a.onsetTimes) std::printf("%.4f\n", t);
     return 0;
 }
