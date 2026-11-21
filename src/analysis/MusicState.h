@@ -26,6 +26,7 @@ struct MusicState {
     float loudness = 0;        // 0..1
     float energyRatio = 1;     // short-term / long-term energy (>1 = getting louder, drops spike it)
     float brightness = 0;      // spectral centroid, 0..1
+    float novelty = 0;         // how different the last ~1 s sounds from the last ~6 s (timbre change)
 };
 
 } // namespace choreo

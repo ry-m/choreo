@@ -1,0 +1,13 @@
+                                             n=80 exact  87.1%  half/dbl  93.3%  median first-ok(acc2)  3.9s  never 1 | fails 0 | BO2 100.0%
+     GoGo!                      exact   0.0 half/dbl  88.7 first  13.9 final 149.9
+     Hey Ya!                    exact   0.0 half/dbl 100.0 first   2.2 final 159.0
+     Rehab                      exact   0.0 half/dbl 100.0 first   5.2 final 146.5
+     Strobe                     exact   0.0 half/dbl   0.0 first  -1.0 final 88.0
+     Insane                     exact   1.1 half/dbl 100.0 first  23.1 final 94.0
+     Starboy                    exact   3.5 half/dbl   4.7 first   8.8 final 124.1
+     Sleepless                  exact   7.4 half/dbl  98.6 first   5.0 final 87.5
+     Innerbloom                 exact  22.7 half/dbl  22.7 first  68.0 final 122.1
+     Lean On                    exact  53.8 half/dbl  53.8 first  34.8 final 98.1
+     Despacito                  exact  59.4 half/dbl  68.4 first  16.9 final 89.0
+     Afterglow                  exact  64.7 half/dbl  65.0 first  23.2 final 173.7
+     Galvanize                  exact  72.9 half/dbl  72.9 first  25.6 final 104.0

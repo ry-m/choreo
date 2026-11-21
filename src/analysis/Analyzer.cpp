@@ -34,10 +34,21 @@ Analyzer::Analyzer(double sampleRate)
     hatLo_ = bin(5000);
     bassHi_ = bin(250);  midHi_ = bin(4000);
     periodHops_ = float(60.0 * fps_ / 120.0);
+    // 16 log-spaced bands, 40 Hz - 16 kHz, for timbre novelty.
+    novEdges_.resize(17);
+    for (int b = 0; b <= 16; ++b) novEdges_[b] = bin(40.0 * std::pow(16000.0 / 40.0, b / 16.0));
+    for (int b = 1; b <= 16; ++b) novEdges_[b] = std::max(novEdges_[b], novEdges_[b - 1] + 1);
+    novShort_.assign(16, 0.f);
+    novLong_.assign(16, 0.f);
     // Tuning hooks for offline experiments: CHOREO_HW="w1,w2,w3,w4", CHOREO_PRIOR="center,octaves".
     if (const char* e = std::getenv("CHOREO_HW"))
         std::sscanf(e, "%f,%f,%f,%f", &harmonicW_[0], &harmonicW_[1], &harmonicW_[2], &harmonicW_[3]);
     if (const char* e = std::getenv("CHOREO_PRIOR")) std::sscanf(e, "%f,%f", &priorCenter_, &priorOctaves_);
+    if (const char* e = std::getenv("CHOREO_TWOBAR")) twoBarW_ = float(std::atof(e));
+    if (const char* e = std::getenv("CHOREO_WARMUP")) warmupSec_ = float(std::atof(e));
+    if (const char* e = std::getenv("CHOREO_NOVELTY")) noveltyThresh_ = float(std::atof(e));
+    if (const char* e = std::getenv("CHOREO_ODFW")) std::sscanf(e, "%f,%f,%f", &odfW_[0], &odfW_[1], &odfW_[2]);
+    if (const char* e = std::getenv("CHOREO_RELSWITCH")) relatedSwitchSec_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_HOLD")) holdRatio_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_HALF")) halfW_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_LOCK")) lockWide_ = std::string(e) == "wide";
@@ -124,7 +135,7 @@ void Analyzer::analyzeHop() {
     if (onsetAll && recordEvents) onsetTimes.push_back(state_.time - dt);
 
     // Beat-tracking ODF: full-band flux with extra kick emphasis (modern music is kick-led).
-    float odf = all_.prev + 0.6f * kick_.prev;
+    float odf = all_.prev + odfW_[0] * kick_.prev + odfW_[1] * snare_.prev + odfW_[2] * hat_.prev;
     odf_[odfPos_] = odf;
     odfPos_ = (odfPos_ + 1) % kOdfHistory;
 
@@ -141,8 +152,36 @@ void Analyzer::analyzeHop() {
         if (silentHops_ == int(0.2 * fps_)) resetRhythm();
     }
 
-    if (hopIndex_ % kTempoEvery == 0 && validHops_ > long(2.5 * fps_)) updateTempo();
+    if (hopIndex_ % kTempoEvery == 0 && validHops_ > long(warmupSec_ * fps_)) updateTempo();
     updateBeatPhase();
+
+    // --- Timbre novelty (song-change detection) -----------------------------------
+    // Short (~1 s) vs long (~6 s) averages of log band energies. A new song changes the whole
+    // spectral balance at once; a drop within a song mostly changes level and density.
+    {
+        const int nbands = int(novShort_.size());
+        float aS = 1.f - std::exp(-dt / 1.0f), aL = 1.f - std::exp(-dt / 6.0f);
+        float meanS = 0, meanL = 0;
+        for (int b = 0; b < nbands; ++b) {
+            double e = 1e-9;
+            for (int k = novEdges_[b]; k < novEdges_[b + 1]; ++k) e += double(mag_[k]) * mag_[k];
+            float le = float(std::log(e));
+            if (validHops_ < 3) { novShort_[b] = novLong_[b] = le; }
+            novShort_[b] += (le - novShort_[b]) * aS;
+            novLong_[b] += (le - novLong_[b]) * aL;
+            meanS += novShort_[b]; meanL += novLong_[b];
+        }
+        meanS /= nbands; meanL /= nbands;
+        // Compare spectral *shape* (level-normalised), so loudness changes alone don't count.
+        float d = 0;
+        for (int b = 0; b < nbands; ++b) d += std::fabs((novShort_[b] - meanS) - (novLong_[b] - meanL));
+        state_.novelty = d / nbands;
+        hopsSinceChange_++;
+        if (state_.novelty > noveltyThresh_ && hopsSinceChange_ > long(8 * fps_) && validHops_ > long(4 * fps_)) {
+            softReset();
+            hopsSinceChange_ = 0;
+        }
+    }
 
     // --- Levels & dynamics --------------------------------------------------------
     float eB = 0, eM = 0, eT = 0, cNum = 0, cDen = 0;
@@ -180,6 +219,16 @@ void Analyzer::analyzeHop() {
     if (state_.beat) state_.beatPulse = 1.f; else state_.beatPulse *= decayBeat;
 }
 
+// Probable song change while music keeps playing (hard cut / DJ mix): keep the current beat
+// and tempo so visuals don't stutter, but drop the rhythm history from before the change and
+// re-open the probation window so the new song's tempo can take over within seconds.
+void Analyzer::softReset() {
+    validHops_ = std::min<long>(validHops_, long(1.0 * fps_));
+    lockedSec_ = 0;
+    pendingSec_ = 0;
+    if (recordEvents) changeTimes.push_back(state_.time);
+}
+
 void Analyzer::resetRhythm() {
     std::fill(odf_.begin(), odf_.end(), 0.f);
     std::fill(tempoScore_.begin(), tempoScore_.end(), 0.f);
@@ -190,41 +239,35 @@ void Analyzer::resetRhythm() {
     state_.tempoConfidence = 0;
 }
 
-void Analyzer::updateTempo() {
-    // Linearise the valid part of the ODF history (only what was heard since the last reset).
-    static thread_local std::vector<float> x, acf;
-    const int N = int(std::min<long>(validHops_, kOdfHistory));
+// Detrended, smoothed, recency-weighted, normalised autocorrelation of the last N values of an
+// ODF history. Returns false if there isn't enough signal.
+bool Analyzer::computeAcf(const std::vector<float>& hist, int N, std::vector<float>& acf, int& maxLag) const {
+    static thread_local std::vector<float> x, w;
+    static thread_local std::vector<double> prefix;
     x.resize(N);
-    for (int i = 0; i < N; ++i) x[i] = odf_[(odfPos_ + kOdfHistory - N + i) % kOdfHistory];
+    for (int i = 0; i < N; ++i) x[i] = hist[(odfPos_ + kOdfHistory - N + i) % kOdfHistory];
     // Remove slow trends with a local mean (~1.4 s window) instead of a global one: a swelling
     // pad or riser otherwise correlates with itself at every lag and looks "periodic".
-    {
-        static thread_local std::vector<double> prefix;
-        prefix.assign(N + 1, 0.0);
-        for (int i = 0; i < N; ++i) prefix[i + 1] = prefix[i] + x[i];
-        const int half = 64;
-        for (int i = 0; i < N; ++i) {
-            int lo = std::max(0, i - half), hi = std::min(N, i + half + 1);
-            x[i] -= float((prefix[hi] - prefix[lo]) / (hi - lo));
-        }
+    prefix.assign(N + 1, 0.0);
+    for (int i = 0; i < N; ++i) prefix[i + 1] = prefix[i] + x[i];
+    const int half = 64;
+    for (int i = 0; i < N; ++i) {
+        int lo = std::max(0, i - half), hi = std::min(N, i + half + 1);
+        x[i] -= float((prefix[hi] - prefix[lo]) / (hi - lo));
     }
     // Light [1 2 1] smoothing widens onset peaks so periods that fall between whole hops
     // still line up in the autocorrelation.
-    {
-        float prev = x[0];
-        for (int i = 1; i + 1 < N; ++i) {
-            float cur = x[i];
-            x[i] = 0.25f * prev + 0.5f * cur + 0.25f * x[i + 1];
-            prev = cur;
-        }
+    float prev = x[0];
+    for (int i = 1; i + 1 < N; ++i) {
+        float cur = x[i];
+        x[i] = 0.25f * prev + 0.5f * cur + 0.25f * x[i + 1];
+        prev = cur;
     }
-
     // Recency-weighted autocorrelation: recent audio counts most (time constant ~recencySec_),
     // so a new song or tempo change takes over within seconds. Each lag is normalised by its
     // own weight sum, so long lags aren't penalised.
-    const int maxLag = std::min(N - 64, int(std::ceil(4 * 60.0 * fps_ / kMinBpm)) + 2);
-    if (maxLag < 32) return;
-    static thread_local std::vector<float> w;
+    maxLag = std::min(N - 64, int(std::ceil((twoBarW_ > 0 ? 8 : 4) * 60.0 * fps_ / kMinBpm)) + 2);
+    if (maxLag < 32) return false;
     w.resize(N);
     const double tau = recencySec_ * fps_;
     for (int i = 0; i < N; ++i) w[i] = float(std::exp(-(N - 1 - i) / tau));
@@ -234,25 +277,42 @@ void Analyzer::updateTempo() {
         for (int i = l; i < N; ++i) { double ww = double(w[i]) * w[i - l]; s += ww * x[i] * x[i - l]; ws += ww; }
         acf[l] = float(s / (ws + 1e-12));
     }
-    if (acf[0] <= 1e-9f) return;
+    if (acf[0] <= 1e-9f) return false;
     const float acf0 = acf[0];
     for (auto& v : acf) v /= acf0;
-    auto acfAt = [&](double lag) {
-        int i = int(lag); float f = float(lag - i);
-        if (i + 1 > maxLag) return 0.f;
-        return acf[i] * (1 - f) + acf[i + 1] * f;
-    };
+    return true;
+}
 
-    // Score each candidate tempo: harmonic sum of ACF at multiples of the period, times a log-Gaussian prior.
+void Analyzer::updateTempo() {
+    // Only what was heard since the last reset.
+    static thread_local std::vector<float> acf;
+    const int N = int(std::min<long>(validHops_, kOdfHistory));
+    int maxLag = 0;
+    if (!computeAcf(odf_, N, acf, maxLag)) return;
+    auto at = [](const std::vector<float>& a, int ml, double lag) {
+        int i = int(lag); float f = float(lag - i);
+        if (i + 1 > ml) return 0.f;
+        return a[i] * (1 - f) + a[i + 1] * f;
+    };
+    auto acfAt = [&](double lag) { return at(acf, maxLag, lag); };
+
+    // Score each candidate tempo: harmonic sum of ACF at multiples of the period, plus half-beat
+    // (subdivision) evidence, times a log-Gaussian prior.
     const int n = bpmGridSize();
     const float wSum = harmonicW_[0] + harmonicW_[1] + harmonicW_[2] + harmonicW_[3];
     float rawPeak = 0;
+    auto evidence = [&](const std::vector<float>& a, int ml, double lag) {
+        float s = 0;
+        for (int m = 1; m <= 4; ++m) s += std::max(0.f, at(a, ml, lag * m)) * harmonicW_[m - 1];
+        return s;
+    };
     for (int i = 0; i < n; ++i) {
         float bpm = gridBpm(i);
         double lag = 60.0 * fps_ / bpm;
-        float s = 0;
-        for (int m = 1; m <= 4; ++m) s += std::max(0.f, acfAt(lag * m)) * harmonicW_[m - 1];
+        float s = evidence(acf, maxLag, lag);
         rawPeak = std::max(rawPeak, s / wSum);
+        // Two-bar evidence: 4/4 patterns repeat every 8 beats; a 3:4 impostor's 8 "beats" don't.
+        if (twoBarW_ > 0 && lag * 8 <= maxLag) s += twoBarW_ * std::max(0.f, acfAt(lag * 8));
         // Subdivision evidence: a true beat almost always has strong half-beats (off-beat hats,
         // 8th notes, DnB 16ths). A 3:4 or 2:3 impostor's half-period falls between real events.
         s += halfW_ * std::max(0.f, acfAt(lag * 0.5));
@@ -317,9 +377,12 @@ void Analyzer::updateTempo() {
     } else if (related(refined, cur) && tempoScore_[curIdx] > holdRatio_ * tempoScore_[best]) {
         pendingSec_ = 0; // same pulse at another level, and the current level is still well supported: hold
     } else if (tempoScore_[best] > 1.15f * tempoScore_[curIdx]) {
+        // A rival must win persistently. A related level (e.g. 2:3 triplet feel in a trap
+        // breakdown) needs much longer than an unrelated one (a real song or tempo change).
         if (std::fabs(refined - pendingBpm_) / pendingBpm_ > 0.04f) { pendingBpm_ = refined; pendingSec_ = 0; }
         pendingSec_ += stepSec;
-        if (pendingSec_ > 2.f) { state_.bpm = refined; pendingSec_ = 0; lockedSec_ = 0; }
+        const float need = related(refined, cur) ? relatedSwitchSec_ : 2.f;
+        if (pendingSec_ > need) { state_.bpm = refined; pendingSec_ = 0; lockedSec_ = 0; }
     } else {
         pendingSec_ = 0;
     }

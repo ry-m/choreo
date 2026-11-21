@@ -107,6 +107,21 @@ These are only 2 real tracks, so the prior choice may be overfit. More reference
 Live results (30-track broad set, exact tempo while a beat is present):
 baseline 59.8% (8 tracks never locked, median lock 10.6 s) → run 2 **84.6%** (1 never locked, median 5.8 s).
 
+Run 3 (offline, on 80 live recordings of real songs; 40 of them held out from tuning):
+- Acc1 (exact tempo) **87.1%**, Acc2 (exact or half/double) **93.3%**. Median time to the correct tempo is 3.9 s,
+  and only 1 track never locks. On the held-out 40 alone: Acc1 87.1%, Acc2 91.3%, so it generalises.
+- Hard cut between songs (30 joined pairs, no gap): median 3.7 s to re-lock (was 8.3 s), thanks to
+  the timbre-novelty song-change detector (soft reset keeps the beat, drops old rhythm history).
+- Changes: novelty soft reset (threshold 1.5), related-level switch needs 4 s, warm-up 1.5 s,
+  one-bar (4x) harmonic weight 0.5. Opus is excluded because its intro genuinely accelerates (~129 → 183).
+- Tried and rejected (no gain or worse): ODF kick/snare/hat weighting, two-bar (8x) evidence,
+  a separate kick/bass-band tempo vote.
+- Offline tools: `tools/eval_offline.py` and `tools/eval_transitions.py` (set `CHOREO_REC_DIR` to the
+  `--record` cache). Each one runs in seconds, against an hour for a live run.
+- Remaining: 4:3 errors from dotted hooks (Starboy 124 for 93; Lean On's intro), Strobe's beatless arp
+  intro (88), and slow locks caused by long beatless intros. Further gains likely need a learned onset/beat
+  activation (M5), not more heuristics.
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 
