@@ -1,0 +1,16 @@
+# Live-eval tracks (from the user's Spotify Liked Songs). Run with:
+#   ./build/choreo-live-eval tests/reference/spotify.csv --out results.csv
+# BPMs are published figures (songbpm.com mostly reflects Spotify's old analysis; mixgraph.io is
+# automated too). Their metrical level can be off by 2x — compare "correct" with "related".
+uri,title,artist,bpm,bpm_source
+spotify:track:5UNfeYceF0Qa9MhxTRLdTX,Holdin On,Flume,90,songbpm.com (audiokeychain agrees)
+spotify:track:4uyYsLMnxzzIB6LE81g4OF,Rushing Back,Flume,136,songbpm.com
+spotify:track:19wot0CZlhJKu4bPvzN0HV,Insane,Flume,188,songbpm.com (audiokeychain says 94)
+spotify:track:32byGecbHazyVBB6V6DELB,Sleepless,Flume,175,songbpm.com
+spotify:track:55DT1tO5jpG74C1tNnEpLi,Hyperreal,Flume,110,songbpm.com
+spotify:track:7qvlZ1AbeqxzRJNYapMcNn,Chimes,Hudson Mohawke,141,mixgraph.io
+spotify:track:3PRPiS8XO5BDwtBePgAlVM,Higher Ground,TNGHT,161,songbpm.com
+spotify:track:6wO0tMzcCpOLIIAWttBbAR,Goooo,TNGHT,143,songbpm.com
+spotify:track:1SOmdrGBcXMcwR6hlZIVqY,GoGo!,Baauer,75,songbpm.com
+spotify:track:0vtX8UMG38p7IXpP4lZJ2z,Bloom,ODESZA,130,songbpm.com
+spotify:track:7sqii6BhIDpJChYpU3WjwS,Kiara,Bonobo,97,songbpm.com

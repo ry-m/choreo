@@ -1,0 +1,35 @@
+# Broad live-eval set: well-known tracks across genres, so failures show up per style.
+#   ./build/choreo-live-eval tests/reference/spotify_broad.csv --out results.csv
+# BPMs from songbpm.com (largely Spotify's old analysis). The metrical level can be off by 2x
+# (e.g. Hey Ya! is usually counted at ~159), so compare "correct" with "related".
+uri,title,artist,bpm,bpm_source
+spotify:track:69kOkLUCkxIZYexIgSG8rq,Get Lucky,Daft Punk,116,songbpm.com; disco/house
+spotify:track:39LLxExYz6ewLAcYrzQQyP,Levitating,Dua Lipa,103,songbpm.com; pop
+spotify:track:0VjIjW4GlUZAMYd2vXMi3b,Blinding Lights,The Weeknd,171,songbpm.com; synthpop
+spotify:track:5UqCQaDshqbIk3pkhy4Pjg,Levels,Avicii,126,songbpm.com; progressive house
+spotify:track:6YUTL4dYpB9xZO5qExPf05,Summer,Calvin Harris,128,songbpm.com; EDM
+spotify:track:3v2oAQomhOcYCPPHafS3KV,Opus,Eric Prydz,125,songbpm.com; progressive house (long intro)
+spotify:track:51ODNNDZm21HU7wI7cccRr,Latch,Disclosure,122,songbpm.com; UK garage (swing)
+spotify:track:6CGMZijOAZvTXG21T8t6R0,Innerbloom,RÜFÜS DU SOL,122,songbpm.com; deep house (slow build)
+spotify:track:1hewNsVmijBqjKvFRQfk4m,bad guy,Billie Eilish,135,songbpm.com; pop (sparse)
+spotify:track:32OlwWuMpZ6b0aN2RZOeMS,Uptown Funk,Mark Ronson,115,songbpm.com; funk
+spotify:track:5FVd6KXrgO9B3JPmC8OPst,Do I Wanna Know?,Arctic Monkeys,85,songbpm.com; indie rock (live drums)
+spotify:track:003vvx7Niy0yvhvHt4a68B,Mr. Brightside,The Killers,148,songbpm.com; indie rock
+spotify:track:7kzKAuUzOITUauHAhoMoxA,Last Nite,The Strokes,104,songbpm.com; indie rock
+spotify:track:6K4t31amVTZDgR3sKmwUJJ,The Less I Know The Better,Tame Impala,117,songbpm.com; psych pop
+spotify:track:7KXjTSCq5nL1LoYtL7XAwS,HUMBLE.,Kendrick Lamar,150,songbpm.com; hip-hop (often felt at 75)
+spotify:track:0wwPcA6wtMf6HUMpIRdeP7,Hotline Bling,Drake,135,songbpm.com; hip-hop/R&B
+spotify:track:6habFhsOp2NvshLv26DqMb,Despacito,Luis Fonsi,89,songbpm.com; reggaeton
+spotify:track:1KPuohcXPmJYQfdyg9zKmR,Another One Bites The Dust,Queen,110,songbpm.com; rock/funk
+spotify:track:7J1uxwnxfQLu4APicE5Rnj,Billie Jean,Michael Jackson,117,songbpm.com; pop/funk
+spotify:track:1lbXEepatjRVjoG8pZMtdp,Dreams,Fleetwood Mac,120,songbpm.com; soft rock
+spotify:track:5ubvP9oKmxLUVq506fgLhk,Stayin' Alive,Bee Gees,104,songbpm.com; disco
+spotify:track:4CeeEOM32jQcH3eN9Q2dGj,Smells Like Teen Spirit,Nirvana,117,songbpm.com; grunge (live tempo drift)
+spotify:track:5ami95W9OOWQPwrBb5tud5,Watercolour,Pendulum,174,songbpm.com; drum & bass
+spotify:track:6LW3Z1GqbL78TIjfDyg4zp,Afterglow,Wilkinson,174,songbpm.com; drum & bass
+spotify:track:3Dv1eDb0MEgF93GpLXlucZ,Say So,Doja Cat,111,songbpm.com; disco-pop
+spotify:track:7qiZfU4dY1lWllzX7mPBI3,Shape of You,Ed Sheeran,96,songbpm.com; pop (dancehall)
+spotify:track:7BKLCZ1jbUBVqRi2FVlTVw,Closer,The Chainsmokers,95,songbpm.com; EDM-pop
+spotify:track:0SiywuOBRcynK0uKGWdCnn,Bad Romance,Lady Gaga,119,songbpm.com; dance-pop
+spotify:track:4OSBTYWVwsQhGLF9NHvIbR,Rolling in the Deep,Adele,105,songbpm.com; pop/soul
+spotify:track:2PpruBYCo4H7WOBJ7Q2EwM,Hey Ya!,Outkast,80,songbpm.com; funk/pop (usually counted ~159)

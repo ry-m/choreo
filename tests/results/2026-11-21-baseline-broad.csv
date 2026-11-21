@@ -1,0 +1,29 @@
+title,artist,ref_bpm,final_bpm,present_pct,correct_pct,related_pct,lock_sec,flips
+"Get Lucky","Daft Punk",116.0,116.02,95.1,100.0,100.0,3.7,0
+"Levitating","Dua Lipa",103.0,103.15,97.2,87.0,87.0,11.6,1
+"Blinding Lights","The Weeknd",171.0,170.74,98.5,85.5,85.5,11.8,1
+"Levels","Avicii",126.0,169.52,100.0,0.0,100.0,-1.0,0
+"Summer","Calvin Harris",128.0,169.52,100.0,0.0,100.0,-1.0,0
+"Opus","Eric Prydz",125.0,179.64,100.0,0.0,53.3,-1.0,1
+"Latch","Disclosure",122.0,122.12,96.3,19.4,100.0,59.1,1
+"Innerbloom","RÜFÜS DU SOL",122.0,122.02,37.4,100.0,100.0,0.0,0
+"bad guy","Billie Eilish",135.0,135.03,100.0,85.1,85.1,11.2,1
+"Uptown Funk","Mark Ronson",115.0,115.00,97.5,88.1,88.1,10.6,1
+"Do I Wanna Know?","Arctic Monkeys",85.0,114.90,100.0,0.0,100.0,-1.0,0
+"Mr. Brightside","The Killers",148.0,147.66,100.0,85.8,100.0,10.7,1
+"Last Nite","The Strokes",104.0,104.13,100.0,88.3,88.3,8.8,1
+"The Less I Know The Better","Tame Impala",117.0,117.23,100.0,87.6,87.6,9.3,1
+"HUMBLE.","Kendrick Lamar",150.0,149.94,96.8,87.9,87.9,11.2,1
+"Hotline Bling","Drake",135.0,135.02,96.5,86.3,86.3,12.5,1
+"Despacito","Luis Fonsi",89.0,177.98,57.8,0.0,100.0,-1.0,1
+"Another One Bites The Dust","Queen",110.0,110.01,100.0,90.0,90.0,7.5,1
+"Billie Jean","Michael Jackson",117.0,117.32,100.0,88.7,88.7,8.5,1
+"Dreams","Fleetwood Mac",120.0,120.23,100.0,100.0,100.0,0.0,0
+"Stayin' Alive","Bee Gees",104.0,103.60,100.0,89.2,89.2,8.1,1
+"Smells Like Teen Spirit","Nirvana",117.0,117.77,97.1,80.7,80.7,16.3,1
+"Watercolour","Pendulum",174.0,116.06,67.5,0.0,100.0,-1.0,0
+"Afterglow","Wilkinson",174.0,116.02,46.7,0.0,100.0,-1.0,0
+"Say So","Doja Cat",111.0,111.03,100.0,86.4,86.4,10.2,0
+"Shape of You","Ed Sheeran",96.0,128.01,93.5,0.0,90.6,-1.0,1
+"Closer","The Chainsmokers",95.0,95.05,71.5,78.0,100.0,17.6,3
+"Bad Romance","Lady Gaga",119.0,118.30,48.7,61.2,61.2,14.2,1

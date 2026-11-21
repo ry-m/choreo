@@ -1,0 +1,6 @@
+# Reference tempos for real tracks (the audio isn't committed; it lives on the dev machine).
+# source: "user" = confirmed by ear, "analyzer" = Choreo's estimate, not yet confirmed.
+# M1's choreo-eval will check tempo octave/metrical-level errors against this file.
+title,artist,bpm,source,notes
+Black Ops 2,Namasenda,144,user,"Beatless intro; tracker flips to 96 (2:3) at section changes"
+Roll with Me,Charli XCX,138,analyzer,"Locks in ~5 s and holds; sounded right by ear but not formally confirmed"
