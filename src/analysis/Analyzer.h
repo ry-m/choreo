@@ -1,7 +1,11 @@
 #pragma once
+#include "analysis/BeatNet.h"
 #include "analysis/FFT.h"
+#include "analysis/Features.h"
 #include "analysis/MusicState.h"
 #include <deque>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace choreo {
@@ -18,6 +22,11 @@ public:
     static constexpr int kHop = 512;
 
     explicit Analyzer(double sampleRate);
+
+    // Load the learned beat/downbeat detector (models/beatnet.bin). When loaded, its beat
+    // activation drives tempo and phase instead of the hand-built onset function.
+    bool loadBeatModel(const std::string& path);
+    bool hasBeatModel() const { return net_.loaded(); }
 
     // Process any number of samples; may run zero or more hops.
     void process(const float* samples, size_t n);
@@ -68,7 +77,7 @@ private:
     std::vector<float> odf_;          // circular history of the ODF
     std::vector<float> phaseOdf_;     // circular history of the phase-alignment ODF
     float phaseW_[4] = {1.f, 0.6f, 0.4f, 0.f}; // phase ODF = these x (full band, kick, snare, hat)
-    float phaseGainLocked_ = 0.10f, phaseGainSearch_ = 0.25f; // PLL correction gains
+    float phaseGainLocked_ = 0.25f, phaseGainSearch_ = 0.40f; // PLL correction gains
     std::vector<float> cs_;           // cumulative beat score history
     float csAlpha_ = 0.9f, csEta_ = 5.f; // cumulative score: memory, and tightness around the period
     int csBeats_ = 3;                 // >0: phase search runs on the cumulative score over this many beats
@@ -106,6 +115,17 @@ private:
     // Dynamics
     float shortE_ = 0, longE_ = 0;
     float bassMax_ = 1e-6f, midMax_ = 1e-6f, trebMax_ = 1e-6f;
+
+    // Learned detector
+    static constexpr int kNnHistory = 512;
+    std::unique_ptr<MelFeatures> features_;
+    BeatNet net_;
+    std::vector<float> nnBeat_, nnDown_;
+    long nnFrames_ = 0;
+    double nnLagSec_ = 0;
+    float nnW_ = -1.f;                 // blend: 1 = network only, 0 = hand-built ODF only (-1 = unset)
+    float nnScale_ = 1.f;
+    float nnAt(const std::vector<float>& ring, double t) const;
 
     MusicState state_;
     std::vector<MusicState> history_;  // ring of recent per-hop states (~5 s)

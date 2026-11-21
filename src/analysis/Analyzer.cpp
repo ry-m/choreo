@@ -44,6 +44,8 @@ Analyzer::Analyzer(double sampleRate)
     if (const char* e = std::getenv("CHOREO_HW"))
         std::sscanf(e, "%f,%f,%f,%f", &harmonicW_[0], &harmonicW_[1], &harmonicW_[2], &harmonicW_[3]);
     if (const char* e = std::getenv("CHOREO_PRIOR")) std::sscanf(e, "%f,%f", &priorCenter_, &priorOctaves_);
+    if (const char* e = std::getenv("CHOREO_NNW")) nnW_ = float(std::atof(e));
+    if (const char* e = std::getenv("CHOREO_NNSCALE")) nnScale_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_CS")) std::sscanf(e, "%f,%f,%d", &csAlpha_, &csEta_, &csBeats_);
     if (const char* e = std::getenv("CHOREO_PHASEW"))
         std::sscanf(e, "%f,%f,%f,%f", &phaseW_[0], &phaseW_[1], &phaseW_[2], &phaseW_[3]);
@@ -60,9 +62,47 @@ Analyzer::Analyzer(double sampleRate)
     if (const char* e = std::getenv("CHOREO_PRESENCE")) std::sscanf(e, "%f,%f,%f", &presentOn_, &presentOff_, &probationSec_);
 }
 
+bool Analyzer::loadBeatModel(const std::string& path) {
+    if (!net_.load(path)) return false;
+    features_ = std::make_unique<MelFeatures>(sr_);
+    nnBeat_.assign(kNnHistory, 0.f);
+    nnDown_.assign(kNnHistory, 0.f);
+    nnFrames_ = 0;
+    // The network output for a frame is available `lookahead` frames later, and its frame
+    // centre lags the analyser's frame centre a little; read it this far in the past.
+    nnLagSec_ = net_.lookahead() / MelFeatures::kFps + 0.012;
+    if (nnW_ < 0) nnW_ = 0.9f; // mostly the network, a little raw onset signal
+    return true;
+}
+
+// Activation at absolute time t (seconds), linearly interpolated from the 100 fps network output.
+float Analyzer::nnAt(const std::vector<float>& ring, double t) const {
+    if (nnFrames_ == 0) return 0.f;
+    double k = (t - features_->centreOffset()) * MelFeatures::kFps; // network frame index
+    long newest = nnFrames_ - 1;
+    k = std::clamp(k, double(std::max<long>(0, newest - kNnHistory + 2)), double(newest));
+    long k0 = long(std::floor(k));
+    float f = float(k - k0);
+    long k1 = std::min(k0 + 1, newest);
+    return ring[k0 % kNnHistory] * (1 - f) + ring[k1 % kNnHistory] * f;
+}
+
 void Analyzer::process(const float* samples, size_t n) {
     while (n > 0) {
         size_t take = std::min(n, size_t(kHop) - inputFill_);
+        if (features_ && net_.loaded()) {
+            features_->process(samples, take, [&](const float* feat) {
+                float a[2];
+                net_.push(feat, a);
+                // This output describes the frame `lookahead` frames ago.
+                long idx = features_->framesProduced() - net_.lookahead();
+                if (idx >= 0) {
+                    nnBeat_[idx % kNnHistory] = a[0];
+                    nnDown_[idx % kNnHistory] = a[1];
+                    nnFrames_ = idx + 1;
+                }
+            });
+        }
         std::copy(samples, samples + take, input_.begin() + inputFill_);
         inputFill_ += take; samples += take; n -= take;
         if (inputFill_ == size_t(kHop)) {
@@ -164,10 +204,22 @@ void Analyzer::analyzeHop() {
 
     // Beat-tracking ODF: full-band flux with extra kick emphasis (modern music is kick-led).
     float odf = all_.prev + odfW_[0] * kick_.prev + odfW_[1] * snare_.prev + odfW_[2] * hat_.prev;
+    float phaseOdfValue = phaseW_[0] * all_.prev + phaseW_[1] * kick_.prev + phaseW_[2] * snare_.prev + phaseW_[3] * hat_.prev;
+    const bool useNet = nnFrames_ > 0 && nnW_ > 0;
+    if (useNet) {
+        // Learned beat activation, sampled at this hop's time minus the network's lag. Blending
+        // keeps a little of the raw onset signal (configurable).
+        double tHop = (double(hopIndex_ + 1) * kHop - kFrameSize / 2) / sr_;
+        float act = nnAt(nnBeat_, tHop - nnLagSec_);
+        odf = nnW_ * act * nnScale_ + (1 - nnW_) * odf;
+        phaseOdfValue = nnW_ * act * nnScale_ + (1 - nnW_) * phaseOdfValue;
+        state_.downbeatActivation = nnAt(nnDown_, tHop - nnLagSec_);
+        state_.beatActivation = act;
+    }
     odf_[odfPos_] = odf;
     // Phase alignment uses its own mix: beats should sit on kicks and snares, not on off-beat
     // hats or the swell of a sidechained bass.
-    phaseOdf_[odfPos_] = phaseW_[0] * all_.prev + phaseW_[1] * kick_.prev + phaseW_[2] * snare_.prev + phaseW_[3] * hat_.prev;
+    phaseOdf_[odfPos_] = phaseOdfValue;
     odfPos_ = (odfPos_ + 1) % kOdfHistory;
 
     ++hopIndex_;
@@ -494,7 +546,9 @@ void Analyzer::updateBeatPhase() {
         float contrast = (bestC - meanC) / (bestC + 1e-6f);
         if (contrast > 0.15f) {
             // If the newest beat was bestO hops ago, the current phase should be bestO / P.
-            float err = wrapHalf(bestO / P - phase_);
+            // With the network, the newest ODF entry describes audio nnLag seconds earlier.
+            double lagHops = (nnFrames_ > 0 && nnW_ > 0) ? nnLagSec_ * fps_ : 0.0;
+            float err = wrapHalf((bestO + lagHops) / P - phase_);
             float gain = state_.tempoConfidence > 0.3f ? phaseGainLocked_ : phaseGainSearch_;
             phase_ += gain * err;
         }

@@ -12,6 +12,8 @@ struct MusicState {
     float tempoConfidence = 0; // 0..1: how clearly one tempo beats the others
     float pulseClarity = 0;    // 0..1: how periodic the onsets are at all (low in beatless intros)
     bool  beatPresent = false; // a beat is clearly present; when false, no beats fire
+    float beatActivation = 0;  // learned detector: how beat-like this moment is (0..1)
+    float downbeatActivation = 0; // learned detector: how downbeat-like (bar start) this moment is
     float beatPhase = 0;       // 0..1 position within the current beat (predicted)
     int   beatCount = 0;
     bool  beat = false;        // a beat fired this hop

@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <string>
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -33,6 +34,13 @@ int main(int argc, char** argv) {
     if (!choreo::loadAudioMono(argv[1], audio, sr)) { std::fprintf(stderr, "failed to read %s\n", argv[1]); return 1; }
 
     choreo::Analyzer a(sr);
+    {
+        // Learned beat model: $CHOREO_MODEL, else <exe dir>/../models/beatnet.bin ("none" = off).
+        std::string exe = argv[0], dir = exe.substr(0, exe.find_last_of('/') == std::string::npos ? 0 : exe.find_last_of('/'));
+        const char* env = std::getenv("CHOREO_MODEL");
+        std::string model = env ? env : (dir.empty() ? "." : dir) + "/../models/beatnet.bin";
+        if (model != "none") a.loadBeatModel(model);
+    }
     a.recordEvents = true;
     const size_t block = 512;
     double nextLine = 1.0, nextSample = 0.0;

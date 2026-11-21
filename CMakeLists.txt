@@ -14,6 +14,8 @@ find_package(SDL3 REQUIRED CONFIG)
 add_library(choreo_analysis STATIC
   src/analysis/FFT.cpp
   src/analysis/Analyzer.cpp
+  src/analysis/Features.cpp
+  src/analysis/BeatNet.cpp
 )
 target_include_directories(choreo_analysis PUBLIC src)
 target_compile_options(choreo_analysis PRIVATE -Wall -Wextra -O3 -ffast-math)
@@ -49,7 +51,16 @@ if(APPLE)
   target_link_libraries(choreo-live-eval PRIVATE choreo_analysis choreo_audio)
 endif()
 
+add_executable(choreo-features tools/choreo_features.cpp tools/Wav.cpp tools/AudioFile.cpp)
+target_link_libraries(choreo-features PRIVATE choreo_analysis)
+if(APPLE)
+  target_link_libraries(choreo-features PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+endif()
+
 enable_testing()
 add_executable(test_analysis tests/test_analysis.cpp)
 target_link_libraries(test_analysis PRIVATE choreo_analysis)
 add_test(NAME analysis COMMAND test_analysis)
+add_executable(test_beatnet tests/test_beatnet.cpp)
+target_link_libraries(test_beatnet PRIVATE choreo_analysis)
+add_test(NAME beatnet COMMAND test_beatnet ${CMAKE_SOURCE_DIR}/models/beatnet.bin ${CMAKE_SOURCE_DIR}/models/beatnet_testvec.bin)

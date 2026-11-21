@@ -11,7 +11,8 @@ standard metrics (as in mir_eval / MIREX), skipping the first 5 s like the liter
   offset   median (Choreo - annotation) for matched beats, ms (+ = Choreo late)
 
 Usage: eval_beats.py DATASET [ENV=VALUE ...]   (DATASET: gtzan | ballroom | all)
-       V=1 for per-clip rows, LIMIT=n to use the first n clips, GENRE=pop to filter GTZAN.
+       V=1 for per-clip rows, LIMIT=n to use the first n clips, GENRE=pop to filter GTZAN,
+       SPLIT=test to score only clips held out from training the learned detector.
 Datasets are expected in $CHOREO_DATA (default ~/.cache/choreo/datasets), see load_* below.
 """
 import glob, os, re, statistics as st, subprocess, sys
@@ -147,6 +148,9 @@ def main():
     sets = {"gtzan": load_gtzan, "ballroom": load_ballroom}
     for ds in (sets if which == "all" else [which]):
         items = sets[ds]()
+        if os.environ.get("SPLIT") in ("test", "train"):
+            split = set(__import__("json").load(open(os.path.join(ROOT, "tools", "ml", "split.json")))[os.environ["SPLIT"]])
+            items = [i for i in items if i[0] in split]
         if os.environ.get("LIMIT"):
             items = items[: int(os.environ["LIMIT"])]
         if not items:

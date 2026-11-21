@@ -146,6 +146,22 @@ SMC was skipped: its host is offline, and the only copy found contains spectrogr
   first forms. Classic signal features don't separate on/off-beat reliably; this is the strongest case
   for a learned beat/downbeat activation, trained on these annotations.
 
+Learned beat/downbeat detector (v1), PyTorch for training only; inference is our own C++:
+- `MelFeatures` (64 log-mel + 64 positive-difference, 100 fps, any sample rate) is shared by training
+  export (`choreo-features`) and runtime. Causal TCN: 11 dilated residual blocks (receptive field ~20 s),
+  48 channels, 121k params, 20 ms look-ahead, beat + downbeat outputs. Trained on GTZAN + Ballroom
+  (1,436 clips x 5 speeds, ±9 dB gain); 261 clips held out (`tools/ml/split.json`).
+- `tools/ml/build_dataset.py` → `tools/ml/train_beats.py` (~20 min on M5 MPS) → `models/beatnet.bin`.
+  `test_beatnet` checks that the C++ streaming inference matches PyTorch (max error 1.4e-6).
+- Held-out clips, full tracker: **GTZAN F 0.721 → 0.814, Ballroom F 0.697 → 0.831**, mostly-off-beat clips
+  21 → 10, median beat offset −15 → −1 ms. Peak-picking the activation alone gives F 0.864.
+- Spotify set: half/double accuracy 93.3% → 94.1% and lock time 3.8 → 3.3 s, but exact tempo 87.0% → 83.5%.
+  DnB now locks at half tempo (87), and drumless modern intros (We Found Love, Bloom) read 4:3 until the drums
+  enter. The training data has little modern EDM/pop and no DnB. **Next: modern training data** (Harmonix
+  via silent Spotify recording + annotation alignment), and bar/downbeat tracking from the downbeat output.
+- Note: the checkpoint was selected on the held-out split, so those numbers are slightly optimistic. Next
+  time, use a separate validation split.
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 

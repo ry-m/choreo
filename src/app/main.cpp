@@ -111,6 +111,12 @@ int main(int argc, char** argv) {
 
     Analyzer analyzer(sr);
     analyzer.recordEvents = tapMode;
+    {
+        const char* env = std::getenv("CHOREO_MODEL");
+        std::string model = env ? env : std::string(SDL_GetBasePath()) + "../models/beatnet.bin";
+        if (model != "none" && analyzer.loadBeatModel(model)) SDL_Log("Learned beat detector loaded (%s)", model.c_str());
+        else SDL_Log("Learned beat detector not loaded; using onset analysis only");
+    }
     Renderer renderer;
     std::string shaderDir = std::string(SDL_GetBasePath()) + "shaders";
     if (!renderer.init(window, shaderDir)) return 1;
