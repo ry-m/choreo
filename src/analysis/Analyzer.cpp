@@ -24,7 +24,7 @@ Analyzer::Analyzer(double sampleRate)
     : sr_(sampleRate), fps_(sampleRate / kHop), fft_(kFrameSize),
       window_(kFrameSize), frame_(kFrameSize, 0.f), input_(kHop), mag_(kFrameSize / 2 + 1),
       logMag_(kFrameSize / 2 + 1, 0.f), prevLog_(kFrameSize / 2 + 1, 0.f), prevMaxF_(kFrameSize / 2 + 1, 0.f),
-      odf_(kOdfHistory, 0.f), tempoScore_(bpmGridSize(), 0.f), rawScore_(bpmGridSize(), 0.f) {
+      odf_(kOdfHistory, 0.f), phaseOdf_(kOdfHistory, 0.f), cs_(kOdfHistory, 0.f), tempoScore_(bpmGridSize(), 0.f), rawScore_(bpmGridSize(), 0.f) {
     for (int i = 0; i < kFrameSize; ++i)
         window_[i] = 0.5f - 0.5f * std::cos(2.0 * M_PI * i / (kFrameSize - 1));
     auto bin = [&](double hz) { return std::clamp(int(std::lround(hz * kFrameSize / sr_)), 1, kFrameSize / 2); };
@@ -44,6 +44,10 @@ Analyzer::Analyzer(double sampleRate)
     if (const char* e = std::getenv("CHOREO_HW"))
         std::sscanf(e, "%f,%f,%f,%f", &harmonicW_[0], &harmonicW_[1], &harmonicW_[2], &harmonicW_[3]);
     if (const char* e = std::getenv("CHOREO_PRIOR")) std::sscanf(e, "%f,%f", &priorCenter_, &priorOctaves_);
+    if (const char* e = std::getenv("CHOREO_CS")) std::sscanf(e, "%f,%f,%d", &csAlpha_, &csEta_, &csBeats_);
+    if (const char* e = std::getenv("CHOREO_PHASEW"))
+        std::sscanf(e, "%f,%f,%f,%f", &phaseW_[0], &phaseW_[1], &phaseW_[2], &phaseW_[3]);
+    if (const char* e = std::getenv("CHOREO_PHASEGAIN")) std::sscanf(e, "%f,%f", &phaseGainLocked_, &phaseGainSearch_);
     if (const char* e = std::getenv("CHOREO_TWOBAR")) twoBarW_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_WARMUP")) warmupSec_ = float(std::atof(e));
     if (const char* e = std::getenv("CHOREO_NOVELTY")) noveltyThresh_ = float(std::atof(e));
@@ -68,6 +72,29 @@ void Analyzer::process(const float* samples, size_t n) {
             analyzeHop();
         }
     }
+}
+
+float Analyzer::csAt(double ago) const {
+    if (ago < 0) ago = 0;
+    int i0 = int(ago);
+    float f = float(ago - i0);
+    auto at = [&](int a) {
+        if (a >= kOdfHistory) return 0.f;
+        return cs_[(odfPos_ + kOdfHistory - 1 - a) % kOdfHistory];
+    };
+    return at(i0) * (1 - f) + at(i0 + 1) * f;
+}
+
+// Same as odfAt, on the phase-alignment ODF (weighted toward kick/snare, see analyzeHop).
+float Analyzer::phaseOdfAt(double ago) const {
+    if (ago < 0) ago = 0;
+    int i0 = int(ago);
+    float f = float(ago - i0);
+    auto at = [&](int a) {
+        if (a >= kOdfHistory) return 0.f;
+        return phaseOdf_[(odfPos_ + kOdfHistory - 1 - a) % kOdfHistory];
+    };
+    return at(i0) * (1 - f) + at(i0 + 1) * f;
 }
 
 float Analyzer::odfAt(double ago) const {
@@ -138,6 +165,9 @@ void Analyzer::analyzeHop() {
     // Beat-tracking ODF: full-band flux with extra kick emphasis (modern music is kick-led).
     float odf = all_.prev + odfW_[0] * kick_.prev + odfW_[1] * snare_.prev + odfW_[2] * hat_.prev;
     odf_[odfPos_] = odf;
+    // Phase alignment uses its own mix: beats should sit on kicks and snares, not on off-beat
+    // hats or the swell of a sidechained bass.
+    phaseOdf_[odfPos_] = phaseW_[0] * all_.prev + phaseW_[1] * kick_.prev + phaseW_[2] * snare_.prev + phaseW_[3] * hat_.prev;
     odfPos_ = (odfPos_ + 1) % kOdfHistory;
 
     ++hopIndex_;
@@ -150,7 +180,7 @@ void Analyzer::analyzeHop() {
     {
         float frameRms = float(std::sqrt(sumSq / kFrameSize));
         if (frameRms < 1e-3f) ++silentHops_; else silentHops_ = 0; // ~-60 dBFS
-        if (silentHops_ == int(0.2 * fps_)) resetRhythm();
+        if (silentHops_ == int(0.45 * fps_)) resetRhythm(); // a gap between songs, not a pause between hits
     }
 
     if (hopIndex_ % kTempoEvery == 0 && validHops_ > long(warmupSec_ * fps_)) updateTempo();
@@ -266,6 +296,8 @@ void Analyzer::softReset() {
 
 void Analyzer::resetRhythm() {
     std::fill(odf_.begin(), odf_.end(), 0.f);
+    std::fill(phaseOdf_.begin(), phaseOdf_.end(), 0.f);
+    std::fill(cs_.begin(), cs_.end(), 0.f);
     std::fill(tempoScore_.begin(), tempoScore_.end(), 0.f);
     validHops_ = 0;
     lockedSec_ = pendingSec_ = 0;
@@ -431,12 +463,30 @@ void Analyzer::updateBeatPhase() {
     const double P = periodHops_;
     phase_ += 1.0 / P;
 
+    // Cumulative beat score (as in BTrack, Stark et al. 2009): each hop's score is its own onset
+    // strength plus the best score about one beat period earlier, weighted by a log-Gaussian
+    // around the period. Consistent beat trains build up; isolated off-beat accents don't.
+    {
+        const int newest = int((odfPos_ + kOdfHistory - 1) % kOdfHistory);
+        float best = 0;
+        const int vlo = std::max(1, int(P * 0.5)), vhi = std::min(kOdfHistory - 2, int(P * 2.0));
+        for (int v = vlo; v <= vhi; ++v) {
+            float lw = float(std::log(v / P)) * csEta_;
+            float w = std::exp(-0.5f * lw * lw);
+            best = std::max(best, w * cs_[(newest + kOdfHistory - v) % kOdfHistory]);
+        }
+        cs_[newest] = (1.f - csAlpha_) * phaseOdf_[newest] + csAlpha_ * best;
+    }
+
     // Phase search: which offset (hops since last beat) best aligns a decaying comb with the ODF?
     if (hopIndex_ % 2 == 0 && hopIndex_ > long(2 * fps_)) {
         double bestO = 0; float bestC = -1, sumC = 0; int count = 0;
         for (double o = 0; o < P; o += 0.5) {
             float c = 0, w = 1;
-            for (int k = 0; k < kPhaseBeats; ++k, w *= 0.85f) c += w * odfAt(o + k * P);
+            if (csBeats_ > 0)
+                for (int k = 0; k < csBeats_; ++k, w *= 0.85f) c += w * csAt(o + k * P);
+            else
+                for (int k = 0; k < kPhaseBeats; ++k, w *= 0.85f) c += w * phaseOdfAt(o + k * P);
             if (c > bestC) { bestC = c; bestO = o; }
             sumC += c; ++count;
         }
@@ -445,7 +495,7 @@ void Analyzer::updateBeatPhase() {
         if (contrast > 0.15f) {
             // If the newest beat was bestO hops ago, the current phase should be bestO / P.
             float err = wrapHalf(bestO / P - phase_);
-            float gain = state_.tempoConfidence > 0.3f ? 0.10f : 0.25f;
+            float gain = state_.tempoConfidence > 0.3f ? phaseGainLocked_ : phaseGainSearch_;
             phase_ += gain * err;
         }
     }

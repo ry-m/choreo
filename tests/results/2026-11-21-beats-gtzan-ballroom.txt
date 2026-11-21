@@ -1,0 +1,2 @@
+gtzan     n= 999  F 0.730  CMLt 0.588  AMLt 0.756  off-beat 14.3%  clips mostly off-beat  76  median offset -16.3 ms
+ballroom  n= 698  F 0.702  CMLt 0.519  AMLt 0.698  off-beat 10.9%  clips mostly off-beat  33  median offset -2.8 ms

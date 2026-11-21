@@ -41,6 +41,8 @@ private:
     void updateTempo();
     void updateBeatPhase();
     float odfAt(double framesAgo) const; // interpolated ODF history lookup
+    float phaseOdfAt(double framesAgo) const;
+    float csAt(double framesAgo) const;
 
     double sr_, fps_;
     FFT fft_;
@@ -64,6 +66,12 @@ private:
 
     // Tempo
     std::vector<float> odf_;          // circular history of the ODF
+    std::vector<float> phaseOdf_;     // circular history of the phase-alignment ODF
+    float phaseW_[4] = {1.f, 0.6f, 0.4f, 0.f}; // phase ODF = these x (full band, kick, snare, hat)
+    float phaseGainLocked_ = 0.10f, phaseGainSearch_ = 0.25f; // PLL correction gains
+    std::vector<float> cs_;           // cumulative beat score history
+    float csAlpha_ = 0.9f, csEta_ = 5.f; // cumulative score: memory, and tightness around the period
+    int csBeats_ = 3;                 // >0: phase search runs on the cumulative score over this many beats
     bool computeAcf(const std::vector<float>& hist, int N, std::vector<float>& acf, int& maxLag) const;
     size_t odfPos_ = 0;
     std::vector<float> tempoScore_;   // smoothed score per BPM grid entry

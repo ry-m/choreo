@@ -40,15 +40,20 @@ struct TapTester {
             if (std::fabs(best) > P * 0.25) ++offbeat; else off.push_back(best * 1000);
         }
         int n = int(taps.size() - reported);
+        // The listener's own tempo: median interval between consecutive taps in this batch.
+        std::vector<double> iv;
+        for (size_t i = reported + 1; i < taps.size(); ++i) iv.push_back(taps[i] - taps[i - 1]);
+        std::sort(iv.begin(), iv.end());
+        double yourBpm = iv.empty() ? 0 : 60.0 / iv[iv.size() / 2];
         reported = taps.size();
         std::sort(off.begin(), off.end());
         if (off.empty()) {
-            std::printf("[tap] last %d taps: none near Choreo's beats — it is locked off-beat or at the wrong tempo (%.1f BPM)\n",
-                        n, a.state().bpm);
+            std::printf("[tap] last %d taps (you: %.0f BPM): none near Choreo's beats — off-beat or wrong tempo (Choreo %.1f BPM)\n",
+                        n, yourBpm, a.state().bpm);
         } else {
             double med = off[off.size() / 2];
-            std::printf("[tap] last %d taps vs Choreo (%.1f BPM): %s by %.0f ms (median), %d/%d taps off-beat\n",
-                        n, a.state().bpm, med >= 0 ? "Choreo EARLY" : "Choreo LATE", std::fabs(med), offbeat, n);
+            std::printf("[tap] last %d taps (you: %.0f BPM) vs Choreo (%.1f BPM): %s by %.0f ms (median), %d/%d taps off-beat\n",
+                        n, yourBpm, a.state().bpm, med >= 0 ? "Choreo EARLY" : "Choreo LATE", std::fabs(med), offbeat, n);
         }
         std::fflush(stdout);
     }

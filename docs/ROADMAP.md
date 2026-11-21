@@ -133,6 +133,19 @@ A/V sync (latency compensation):
 - Synthetic phase accuracy: beats are 5 ms early, with a 1.5 ms spread. On real music, the nearest kick sits a median of 8 ms
   from the predicted beat. Some songs (Gosh, Starboy, Shake It Off, Closer) may lock half a beat out; to be confirmed by tapping.
 
+Beat-phase ground truth (no human tapping): GTZAN (999 clips, 10 genres) and Ballroom (698), with expert
+beat annotations, in `~/.cache/choreo/datasets` (not in the repo). Run `tools/eval_beats.py all`, ~12 s.
+SMC was skipped: its host is offline, and the only copy found contains spectrograms, not audio.
+- Baseline: GTZAN F 0.701 / AMLt 0.722, Ballroom F 0.672 / AMLt 0.640.
+- With a BTrack-style cumulative beat score for phase (+ snare weight in the phase ODF): **GTZAN F 0.730 /
+  AMLt 0.756, Ballroom F 0.702 / AMLt 0.698**. By genre: disco 0.93, reggae 0.85, hip-hop 0.82,
+  pop/rock ~0.75. Classical and jazz are weak, as expected.
+- Tried and rejected: kick-weighted phase (bass lines pull it off-beat), loudness/bass-accent phase flipping,
+  and PLL gain changes.
+- Remaining: about 14% off-beat beats (76 GTZAN clips mostly off-beat), mostly a wrong choice when the lock
+  first forms. Classic signal features don't separate on/off-beat reliably; this is the strongest case
+  for a learned beat/downbeat activation, trained on these annotations.
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 
