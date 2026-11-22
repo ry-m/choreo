@@ -238,6 +238,14 @@ Remaining:
 - Debug overlay: ODF plot, tempo curve, beat ticks (essential for tuning)
 
 ### M3 — Sections & dynamics
+**Core product principle (the main gap in existing visualisers): visuals blend continuously
+within a section, but when the music changes significantly (a drop, a chorus, a breakdown) the
+visuals change *on the beat*.** Hard cuts and scene switches are quantised to the downbeat where the new
+section starts (from `BarTracker`), never mid-bar, and never delayed until the next bar.
+- Section-change detector: causal, scored against Harmonix segment labels (intro/verse/chorus/drop...),
+  reporting "a new section starts at this downbeat" plus its kind and intensity (drop vs subtle change).
+  It has to fire on the downbeat itself, so it needs anticipation (builds, risers, snare rolls, filter
+  sweeps, the silence before a drop). Evaluated by hit rate at ±1 beat, false cuts per minute and latency.
 - Build-up / drop / breakdown detection, plus riser/snare-roll detection
 - "Anticipation" signals: progress through a build (0→1) and time to the predicted drop
 
@@ -245,7 +253,8 @@ Remaining:
 - Shader toolchain (Slang or HLSL → SPIR-V/MSL/DXIL), hot reload
 - Render graph: HDR targets, bloom, chromatic aberration, feedback/trails, film grain, tonemapping
 - GPU compute particles (1M+), SDF scene library, volumetric fog
-- Scene director: picks scenes and transitions on phrase boundaries, intensity follows energy
+- Scene director: continuous blending and intensity within a section; on a detected section change, a
+  hard switch (new scene, palette, camera) exactly on that downbeat; smaller accents on phrase boundaries
 - 8–12 distinct scenes (fractal tunnels, kaleidoscopic Mandelbox, liquid chrome, particle galaxies, neon grids)
 
 ### M5 — Polish & intelligence
