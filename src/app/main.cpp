@@ -1,7 +1,9 @@
 #include "analysis/Analyzer.h"
 #include "app/ClickTrack.h"
 #include "app/Settings.h"
+#include "app/GpuStats.h"
 #include "audio/Capture.h"
+#include "render/Director.h"
 #include "render/Renderer.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -21,7 +23,8 @@ void printHelp() {
         "  --app com.spotify.client   visualise one app only (add --mute to silence that app)\n"
         "  --calibrate                play a click track; flash on each detected beat (A/V sync)\n"
         "  --tap                      tap SPACE on the beat; prints how far Choreo's beats are from yours\n"
-        "keys: F fullscreen, [ / ] visuals 5 ms earlier / later (saved), Esc quit\n");
+        "keys: F fullscreen, [ / ] visuals 5 ms earlier / later (saved), 1-4 pin a scene, 0 director's choice,\n"
+        "      R reload shaders, Esc quit\n");
 }
 
 // Tap mode: collect the user's taps (in audio time) and compare them with Choreo's beats.
@@ -120,11 +123,20 @@ int main(int argc, char** argv) {
         std::string smodel = senv ? senv : std::string(SDL_GetBasePath()) + "../models/sections.bin";
         if (smodel != "none" && analyzer.loadSectionModel(smodel)) SDL_Log("Section-change detector loaded (%s)", smodel.c_str());
     }
+    SDL_GPUDevice* device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, false, nullptr);
+    if (!device) { SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError()); return 1; }
+    if (!SDL_ClaimWindowForGPUDevice(device, window)) { SDL_Log("Claim window failed: %s", SDL_GetError()); return 1; }
+    SDL_SetGPUSwapchainParameters(device, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
+    SDL_SetGPUAllowedFramesInFlight(device, 2);
+    float refreshHz = 60.f;
+    if (const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)))
+        if (dm->refresh_rate > 1.f) refreshHz = dm->refresh_rate;
+    SDL_Log("GPU driver: %s, display %.0f Hz", SDL_GetGPUDeviceDriver(device), refreshHz);
+
     Renderer renderer;
     std::string shaderDir = std::string(SDL_GetBasePath()) + "shaders";
-    if (!renderer.init(window, shaderDir)) return 1;
-    renderer.setTargetFps(targetFps);
-    renderer.setCalibrationMode(calibrate);
+    if (!renderer.init(device, SDL_GetGPUSwapchainTextureFormat(device, window), shaderDir)) return 1;
+    Director director;
     const Uint64 framePeriodNs = Uint64(1e9 / targetFps);
     Uint64 nextFrame = SDL_GetTicksNS();
 
@@ -154,6 +166,12 @@ int main(int argc, char** argv) {
                     settings.save();
                     SDL_Log("visual delay %+.0f ms (saved)", settings.visualDelayMs);
                 }
+                if (e.key.key == SDLK_R) renderer.reloadShaders();
+                if (e.key.key >= SDLK_0 && e.key.key <= SDLK_9) {
+                    int s = int(e.key.key - SDLK_0) - 1;
+                    director.forceScene(s < kSceneCount ? s : -1);
+                    SDL_Log("scene: %s", s >= 0 && s < kSceneCount ? kScenes[s].name : "director's choice");
+                }
                 if (tapMode && e.key.key == SDLK_SPACE) {
                     // Event timestamps are SDL ticks; convert to the capture clock.
                     uint64_t tapNs = nowNs() - (SDL_GetTicksNS() - e.key.timestamp);
@@ -180,14 +198,25 @@ int main(int argc, char** argv) {
         Uint64 now = SDL_GetTicksNS();
         float dt = float(now - last) * 1e-9f;
         last = now;
-        renderer.render(shown, dt);
+        renderer.adaptResolution(dt, targetFps, refreshHz);
+        director.update(shown, dt);
+        if (SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device)) {
+            SDL_GPUTexture* swap = nullptr;
+            Uint32 w = 0, h = 0;
+            if (SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window, &swap, &w, &h) && swap) {
+                if (calibrate) renderer.renderCalibration(cmd, swap, w, h, shown.beatPhase, shown.bpm);
+                else renderer.render(cmd, swap, w, h, director.scene(), director.uniforms(), director.post());
+            }
+            SDL_SubmitGPUCommandBuffer(cmd);
+        }
         ++framesSinceLog;
 
         if (now - lastLog > 2'000'000'000ull) {
             const auto& s = analyzer.state();
             float fps = framesSinceLog / (float(now - lastLog) * 1e-9f);
-            SDL_Log("%.0f fps  render %dx%d (%.0f%%)  |  %s  bpm %.1f (conf %.2f, clarity %.2f)  beats %d  |  shown %+.0f ms vs analysis",
+            SDL_Log("%.0f fps  render %dx%d (%.0f%%)  GPU %d%%  %s  |  %s  bpm %.1f (conf %.2f, clarity %.2f)  beats %d  |  shown %+.0f ms vs analysis",
                     fps, renderer.renderWidth(), renderer.renderHeight(), renderer.renderScale() * 100.f,
+                    gpuUtilizationPercent(), kScenes[director.scene()].id,
                     s.beatPresent ? "BEAT" : "no beat", s.bpm, s.tempoConfidence, s.pulseClarity, s.beatCount,
                     (tShow - s.time) * 1000);
             lastLog = now;
@@ -197,6 +226,8 @@ int main(int argc, char** argv) {
     clicks.stop();
     capture->stop();
     renderer.shutdown();
+    SDL_ReleaseWindowFromGPUDevice(device, window);
+    SDL_DestroyGPUDevice(device);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

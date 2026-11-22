@@ -3,38 +3,53 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <initializer_list>
 #include <sstream>
 
 namespace choreo {
 
 namespace {
 constexpr float kMinScale = 0.25f;
-// Cap on raymarched pixels regardless of display size. Keeps the GPU at roughly half load
-// at 60 fps on Apple silicon, leaving room for the compositor (and quiet fans).
-constexpr float kMaxPixels = 1.5e6f;
-} // namespace
+constexpr SDL_GPUTextureFormat kHdr = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+enum Post { kFeedback, kPrefilter, kDown, kUp, kFinal, kCalibrate, kPostCount };
+const char* kPostEntry[kPostCount] = {"fs_feedback", "fs_prefilter", "fs_down", "fs_up", "fs_final", "fs_calibrate"};
+const int kPostSamplers[kPostCount] = {2, 1, 1, 2, 2, 0};
 
-bool Renderer::init(SDL_Window* window, const std::string& shaderDir) {
-    window_ = window;
-    device_ = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, false, nullptr);
-    if (!device_) { SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError()); return false; }
-    if (!SDL_ClaimWindowForGPUDevice(device_, window_)) { SDL_Log("Claim window failed: %s", SDL_GetError()); return false; }
-    SDL_SetGPUSwapchainParameters(device_, window_, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
-    SDL_SetGPUAllowedFramesInFlight(device_, 2);
+// Must match `PostU` in shaders/post.metal.
+struct PostUniforms {
+    float src0[4]; // uv scale of input 0 (active region / texture size), texel size of input 0
+    float src1[4];
+    float p0[4], p1[4], p2[4];
+};
 
-    if (const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_)))
-        if (dm->refresh_rate > 1.f) refreshHz_ = dm->refresh_rate;
-    dtAvg_ = 1.f / refreshHz_;
-    SDL_Log("GPU driver: %s, display %.0f Hz", SDL_GetGPUDeviceDriver(device_), refreshHz_);
-    return buildPipeline(shaderDir + "/tunnel.metal");
-}
-
-bool Renderer::buildPipeline(const std::string& path) {
+bool readFile(const std::string& path, std::string& out) {
     std::ifstream f(path);
     if (!f) { SDL_Log("Cannot open shader %s", path.c_str()); return false; }
     std::stringstream ss; ss << f.rdbuf();
-    std::string src = ss.str();
+    out = ss.str();
+    return true;
+}
 
+void region(float* dst, unsigned activeW, unsigned activeH, unsigned texW, unsigned texH) {
+    dst[0] = float(activeW) / float(texW); dst[1] = float(activeH) / float(texH);
+    dst[2] = 1.f / float(texW); dst[3] = 1.f / float(texH);
+}
+} // namespace
+
+bool Renderer::init(SDL_GPUDevice* device, int outFormat, const std::string& shaderDir) {
+    device_ = device;
+    outFormat_ = outFormat;
+    shaderDir_ = shaderDir;
+    SDL_GPUSamplerCreateInfo si{};
+    si.min_filter = si.mag_filter = SDL_GPU_FILTER_LINEAR;
+    si.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+    si.address_mode_u = si.address_mode_v = si.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    linear_ = SDL_CreateGPUSampler(device_, &si);
+    return linear_ && buildAll(scenes_, post_);
+}
+
+SDL_GPUGraphicsPipeline* Renderer::makePipeline(const std::string& src, const char* entry, int format, int samplers,
+                                                const std::string& what) {
     SDL_GPUShaderCreateInfo vs{};
     vs.code = reinterpret_cast<const Uint8*>(src.c_str());
     vs.code_size = src.size();
@@ -42,58 +57,125 @@ bool Renderer::buildPipeline(const std::string& path) {
     vs.format = SDL_GPU_SHADERFORMAT_MSL;
     vs.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     SDL_GPUShaderCreateInfo fs = vs;
-    fs.entrypoint = "fmain";
+    fs.entrypoint = entry;
     fs.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     fs.num_uniform_buffers = 1;
-
+    fs.num_samplers = Uint32(samplers);
     SDL_GPUShader* v = SDL_CreateGPUShader(device_, &vs);
-    SDL_GPUShader* p = SDL_CreateGPUShader(device_, &fs);
-    if (!v || !p) { SDL_Log("Shader compile failed: %s", SDL_GetError()); return false; }
-
+    SDL_GPUShader* p = v ? SDL_CreateGPUShader(device_, &fs) : nullptr;
+    if (!v || !p) {
+        SDL_Log("Shader compile failed (%s): %s", what.c_str(), SDL_GetError());
+        if (v) SDL_ReleaseGPUShader(device_, v);
+        return nullptr;
+    }
     SDL_GPUColorTargetDescription ct{};
-    ct.format = SDL_GetGPUSwapchainTextureFormat(device_, window_);
+    ct.format = SDL_GPUTextureFormat(format);
     SDL_GPUGraphicsPipelineCreateInfo pi{};
     pi.vertex_shader = v;
     pi.fragment_shader = p;
     pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
     pi.target_info.num_color_targets = 1;
     pi.target_info.color_target_descriptions = &ct;
-    pipeline_ = SDL_CreateGPUGraphicsPipeline(device_, &pi);
+    SDL_GPUGraphicsPipeline* pipe = SDL_CreateGPUGraphicsPipeline(device_, &pi);
     SDL_ReleaseGPUShader(device_, v);
     SDL_ReleaseGPUShader(device_, p);
-    if (!pipeline_) { SDL_Log("Pipeline creation failed: %s", SDL_GetError()); return false; }
+    if (!pipe) SDL_Log("Pipeline creation failed (%s): %s", what.c_str(), SDL_GetError());
+    return pipe;
+}
+
+bool Renderer::buildAll(std::vector<SDL_GPUGraphicsPipeline*>& scenes, std::vector<SDL_GPUGraphicsPipeline*>& post) {
+    std::string common, src;
+    if (!readFile(shaderDir_ + "/common.metal", common)) return false;
+    bool ok = true;
+    for (int i = 0; i < kSceneCount && ok; ++i) {
+        std::string file = shaderDir_ + "/scene_" + kScenes[i].id + ".metal";
+        ok = readFile(file, src);
+        SDL_GPUGraphicsPipeline* p = ok ? makePipeline(common + src, "fmain", kHdr, 0, file) : nullptr;
+        scenes.push_back(p);
+        ok = p != nullptr;
+    }
+    if (ok && readFile(shaderDir_ + "/post.metal", src)) {
+        for (int i = 0; i < kPostCount && ok; ++i) {
+            int fmt = (i == kFinal || i == kCalibrate) ? outFormat_ : int(kHdr);
+            SDL_GPUGraphicsPipeline* p = makePipeline(common + src, kPostEntry[i], fmt, kPostSamplers[i], kPostEntry[i]);
+            post.push_back(p);
+            ok = p != nullptr;
+        }
+    } else {
+        ok = false;
+    }
+    if (!ok) {
+        for (auto* p : scenes) if (p) SDL_ReleaseGPUGraphicsPipeline(device_, p);
+        for (auto* p : post) if (p) SDL_ReleaseGPUGraphicsPipeline(device_, p);
+        scenes.clear(); post.clear();
+    }
+    return ok;
+}
+
+bool Renderer::reloadShaders() {
+    std::vector<SDL_GPUGraphicsPipeline*> s, p;
+    if (!buildAll(s, p)) { SDL_Log("Shader reload failed; keeping the previous shaders"); return false; }
+    SDL_WaitForGPUIdle(device_);
+    for (auto* x : scenes_) SDL_ReleaseGPUGraphicsPipeline(device_, x);
+    for (auto* x : post_) SDL_ReleaseGPUGraphicsPipeline(device_, x);
+    scenes_ = s; post_ = p;
+    SDL_Log("Shaders reloaded");
     return true;
 }
 
-bool Renderer::ensureSceneTexture(unsigned w, unsigned h) {
-    if (scene_ && sceneW_ == w && sceneH_ == h) return true;
-    if (scene_) SDL_ReleaseGPUTexture(device_, scene_);
-    SDL_GPUTextureCreateInfo ti{};
-    ti.type = SDL_GPU_TEXTURETYPE_2D;
-    ti.format = SDL_GetGPUSwapchainTextureFormat(device_, window_);
-    ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    ti.width = w;
-    ti.height = h;
-    ti.layer_count_or_depth = 1;
-    ti.num_levels = 1;
-    ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    scene_ = SDL_CreateGPUTexture(device_, &ti);
-    sceneW_ = w; sceneH_ = h;
-    // Never raymarch more than kMaxPixels, however big the display is.
-    maxScale_ = std::min(1.f, std::sqrt(kMaxPixels / float(w * h)));
-    scale_ = std::min(scale_, maxScale_);
-    return scene_ != nullptr;
+void Renderer::releaseTargets() {
+    auto rel = [&](SDL_GPUTexture*& t) { if (t) SDL_ReleaseGPUTexture(device_, t); t = nullptr; };
+    rel(scene_); rel(history_[0]); rel(history_[1]);
+    for (int i = 0; i < kBloomLevels; ++i) { rel(down_[i]); rel(up_[i]); }
 }
 
-// Dynamic resolution: keep frame time at the display refresh. Drop quickly when over
-// budget, creep back up slowly, and wait a while after a drop to avoid oscillating.
-void Renderer::adaptResolution(float dt) {
+bool Renderer::ensureTargets(unsigned w, unsigned h) {
+    if (scene_ && outW_ == w && outH_ == h) return true;
+    releaseTargets();
+    outW_ = w; outH_ = h;
+    // Never raymarch more than maxPixels_, however big the display is.
+    maxScale_ = std::min(1.f, std::sqrt(maxPixels_ / float(w * h)));
+    if (!fixedScale_) scale_ = std::min(scale_, maxScale_);
+    texW_ = std::max(1u, unsigned(std::ceil(w * std::max(maxScale_, fixedScale_ ? scale_ : 0.f))));
+    texH_ = std::max(1u, unsigned(std::ceil(h * std::max(maxScale_, fixedScale_ ? scale_ : 0.f))));
+    auto make = [&](unsigned tw, unsigned th) {
+        SDL_GPUTextureCreateInfo ti{};
+        ti.type = SDL_GPU_TEXTURETYPE_2D;
+        ti.format = kHdr;
+        ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        ti.width = tw; ti.height = th;
+        ti.layer_count_or_depth = 1;
+        ti.num_levels = 1;
+        ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        return SDL_CreateGPUTexture(device_, &ti);
+    };
+    scene_ = make(texW_, texH_);
+    history_[0] = make(texW_, texH_);
+    history_[1] = make(texW_, texH_);
+    bool ok = scene_ && history_[0] && history_[1];
+    for (int i = 0; i < kBloomLevels; ++i) {
+        levelW_[i] = std::max(1u, texW_ >> (i + 1));
+        levelH_[i] = std::max(1u, texH_ >> (i + 1));
+        down_[i] = make(levelW_[i], levelH_[i]);
+        up_[i] = make(levelW_[i], levelH_[i]);
+        ok = ok && down_[i] && up_[i];
+    }
+    historyValid_ = false;
+    if (!ok) SDL_Log("Render target allocation failed: %s", SDL_GetError());
+    return ok;
+}
+
+// Dynamic resolution: keep frame time at the display refresh. Drop quickly when over budget,
+// creep back up slowly, and wait a while after a drop to avoid oscillating.
+void Renderer::adaptResolution(float dt, float targetFps, float refreshHz) {
+    if (fixedScale_) return;
+    dt = std::min(dt, 0.1f);
     dtAvg_ += (dt - dtAvg_) * 0.1f;
     adaptTimer_ += dt;
     raiseCooldown_ = std::max(0.f, raiseCooldown_ - dt);
     if (adaptTimer_ < 0.25f) return;
     adaptTimer_ = 0.f;
-    const float budget = 1.f / std::min(targetFps_, refreshHz_);
+    const float budget = 1.f / std::min(targetFps, refreshHz);
     if (dtAvg_ > budget * 1.2f) {
         scale_ = std::max(kMinScale, scale_ * 0.85f);
         raiseCooldown_ = 3.f;
@@ -102,82 +184,111 @@ void Renderer::adaptResolution(float dt) {
     }
 }
 
-void Renderer::render(const MusicState& m, float dt) {
-    dt = std::min(dt, 0.1f);
-    time_ += dt;
-    adaptResolution(dt);
+void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h, int scene,
+                      const SceneUniforms& uIn, const PostLook& look) {
+    if (scenes_.empty() || !ensureTargets(w, h)) return;
+    scene = std::clamp(scene, 0, kSceneCount - 1);
+    rw_ = std::clamp(int(std::lround(w * scale_)), 1, int(texW_));
+    rh_ = std::clamp(int(std::lround(h * scale_)), 1, int(texH_));
+    SceneUniforms u = uIn;
+    u.res[0] = float(rw_); u.res[1] = float(rh_);
 
-    // Speed follows energy; kicks give a forward shove. Twist reacts to snares; hue drifts per beat.
-    float speed = 1.0f + 3.0f * m.loudness * m.loudness + 2.5f * m.kick + 1.5f * std::max(0.f, m.energyRatio - 1.f);
-    travel_ += speed * dt;
-    twist_ += (0.15f + 1.2f * m.snare) * dt;
-    if (m.beatCount != lastBeat_) {
-        lastBeat_ = m.beatCount;
-        // Shift the palette every 4 bars, on a real downbeat (bar tracker). Without bar
-        // information (no beat model: beatInBar never leaves 0), count 16 beats instead.
-        if (m.beatInBar != 0) barsKnown_ = true;
-        if (barsKnown_) {
-            if (m.beatInBar == 0 && ++bars_ % 4 == 0) hue_ += 0.25f;
-        } else if (m.beatCount % 16 == 0) {
-            hue_ += 0.25f;
-        }
-        flash_ = 1.f;
-    }
-    hue_ += 0.01f * dt;
-    flash_ *= std::exp(-dt / 0.12f);
-
-    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device_);
-    if (!cmd) return;
-    SDL_GPUTexture* swap = nullptr;
-    Uint32 w = 0, h = 0;
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window_, &swap, &w, &h) || !swap || !ensureSceneTexture(w, h)) {
-        SDL_SubmitGPUCommandBuffer(cmd);
-        return;
-    }
-    rw_ = std::max(1, int(w * scale_));
-    rh_ = std::max(1, int(h * scale_));
-
-    FrameUniforms u{
-        {float(rw_), float(rh_), time_, m.beatPhase},
-        {m.beatPulse, m.kick, m.snare, m.hat},
-        {m.bass, m.mid, m.treble, m.loudness},
-        {m.energyRatio, m.brightness, m.bpm, float(m.beatCount)},
-        {travel_, twist_, hue_, flash_},
-        {calibration_ ? 1.f : 0.f, 0, 0, 0},
+    auto pass = [&](SDL_GPUTexture* dst, unsigned vw, unsigned vh, SDL_GPUGraphicsPipeline* pipe,
+                    std::initializer_list<SDL_GPUTexture*> srcs, const void* ubo, Uint32 size, bool clear = false) {
+        SDL_GPUColorTargetInfo t{};
+        t.texture = dst;
+        t.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE;
+        t.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPURenderPass* rp = SDL_BeginGPURenderPass(cmd, &t, 1, nullptr);
+        if (!pipe) { SDL_EndGPURenderPass(rp); return; }
+        SDL_GPUViewport vp{0, 0, float(vw), float(vh), 0, 1};
+        SDL_SetGPUViewport(rp, &vp);
+        SDL_BindGPUGraphicsPipeline(rp, pipe);
+        SDL_GPUTextureSamplerBinding b[2]{};
+        Uint32 nb = 0;
+        for (SDL_GPUTexture* s : srcs) { b[nb].texture = s; b[nb].sampler = linear_; ++nb; }
+        if (nb) SDL_BindGPUFragmentSamplers(rp, 0, b, nb);
+        SDL_PushGPUFragmentUniformData(cmd, 0, ubo, size);
+        SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(rp);
     };
 
-    // 1) Raymarch into the top-left rw_ x rh_ region of the scene texture.
-    SDL_GPUColorTargetInfo target{};
-    target.texture = scene_;
-    target.load_op = SDL_GPU_LOADOP_DONT_CARE;
-    target.store_op = SDL_GPU_STOREOP_STORE;
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &target, 1, nullptr);
-    SDL_GPUViewport vp{0, 0, float(rw_), float(rh_), 0, 1};
-    SDL_SetGPUViewport(pass, &vp);
-    SDL_BindGPUGraphicsPipeline(pass, pipeline_);
-    SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof(u));
-    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
-    SDL_EndGPURenderPass(pass);
+    if (!historyValid_) {
+        // Trails need a defined previous frame (garbage could be NaN, which survives a zero weight).
+        for (SDL_GPUTexture* t : history_) pass(t, texW_, texH_, nullptr, {}, nullptr, 0, true);
+        historyValid_ = true;
+    }
+    const int prev = cur_;
+    cur_ ^= 1;
 
-    // 2) Upscale to the window with bilinear filtering.
-    SDL_GPUBlitInfo blit{};
-    blit.source.texture = scene_;
-    blit.source.w = Uint32(rw_);
-    blit.source.h = Uint32(rh_);
-    blit.destination.texture = swap;
-    blit.destination.w = w;
-    blit.destination.h = h;
-    blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
-    blit.filter = SDL_GPU_FILTER_LINEAR;
-    SDL_BlitGPUTexture(cmd, &blit);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    // 1) Scene, raymarched in HDR into the top-left rw x rh of the scene texture.
+    pass(scene_, rw_, rh_, scenes_[scene], {}, &u, sizeof u);
+
+    // 2) Feedback: blend the warped previous frame into the new one.
+    PostUniforms pu{};
+    region(pu.src0, rw_, rh_, texW_, texH_);
+    region(pu.src1, rw_, rh_, texW_, texH_);
+    pu.p0[0] = look.trails; pu.p0[1] = look.trailZoom; pu.p0[2] = look.trailRot; pu.p0[3] = float(rw_) / float(rh_);
+    pass(history_[cur_], rw_, rh_, post_[kFeedback], {scene_, history_[prev]}, &pu, sizeof pu);
+
+    // 3) Bloom: prefilter to half resolution, then down to 1/32, then back up (tent filter).
+    unsigned lw[kBloomLevels], lh[kBloomLevels];
+    for (int i = 0; i < kBloomLevels; ++i) { lw[i] = std::max(1, rw_ >> (i + 1)); lh[i] = std::max(1, rh_ >> (i + 1)); }
+    pu = {};
+    region(pu.src0, rw_, rh_, texW_, texH_);
+    pu.p0[0] = 0.9f; pu.p0[1] = 0.6f;  // threshold, soft knee
+    pass(down_[0], lw[0], lh[0], post_[kPrefilter], {history_[cur_]}, &pu, sizeof pu);
+    for (int i = 1; i < kBloomLevels; ++i) {
+        pu = {};
+        region(pu.src0, lw[i - 1], lh[i - 1], levelW_[i - 1], levelH_[i - 1]);
+        pass(down_[i], lw[i], lh[i], post_[kDown], {down_[i - 1]}, &pu, sizeof pu);
+    }
+    SDL_GPUTexture* upper = down_[kBloomLevels - 1];
+    for (int i = kBloomLevels - 2; i >= 0; --i) {
+        pu = {};
+        region(pu.src0, lw[i], lh[i], levelW_[i], levelH_[i]);
+        region(pu.src1, lw[i + 1], lh[i + 1], levelW_[i + 1], levelH_[i + 1]);
+        pu.p0[0] = 1.0f;  // weight of the coarser level
+        pass(up_[i], lw[i], lh[i], post_[kUp], {down_[i], upper}, &pu, sizeof pu);
+        upper = up_[i];
+    }
+
+    // 4) Final composite at full output resolution.
+    pu = {};
+    region(pu.src0, rw_, rh_, texW_, texH_);
+    region(pu.src1, lw[0], lh[0], levelW_[0], levelH_[0]);
+    pu.p0[0] = look.bloom; pu.p0[1] = look.chroma; pu.p0[2] = look.exposure; pu.p0[3] = look.flash;
+    pu.p1[0] = look.grain; pu.p1[1] = u.res[2]; pu.p1[2] = float(w); pu.p1[3] = float(h);
+    pass(target, w, h, post_[kFinal], {history_[cur_], upper}, &pu, sizeof pu);
+}
+
+void Renderer::renderCalibration(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h,
+                                 float beatPhase, float bpm) {
+    if (post_.empty()) return;
+    PostUniforms pu{};
+    pu.p0[0] = beatPhase; pu.p0[1] = bpm;
+    SDL_GPUColorTargetInfo t{};
+    t.texture = target;
+    t.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    t.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_GPURenderPass* rp = SDL_BeginGPURenderPass(cmd, &t, 1, nullptr);
+    SDL_GPUViewport vp{0, 0, float(w), float(h), 0, 1};
+    SDL_SetGPUViewport(rp, &vp);
+    SDL_BindGPUGraphicsPipeline(rp, post_[kCalibrate]);
+    SDL_PushGPUFragmentUniformData(cmd, 0, &pu, sizeof pu);
+    SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
+    SDL_EndGPURenderPass(rp);
 }
 
 void Renderer::shutdown() {
-    if (scene_) SDL_ReleaseGPUTexture(device_, scene_);
-    if (pipeline_) SDL_ReleaseGPUGraphicsPipeline(device_, pipeline_);
-    if (device_) { SDL_ReleaseWindowFromGPUDevice(device_, window_); SDL_DestroyGPUDevice(device_); }
-    scene_ = nullptr; pipeline_ = nullptr; device_ = nullptr;
+    if (!device_) return;
+    releaseTargets();
+    for (auto* p : scenes_) SDL_ReleaseGPUGraphicsPipeline(device_, p);
+    for (auto* p : post_) SDL_ReleaseGPUGraphicsPipeline(device_, p);
+    scenes_.clear(); post_.clear();
+    if (linear_) SDL_ReleaseGPUSampler(device_, linear_);
+    linear_ = nullptr;
+    device_ = nullptr;
 }
 
 } // namespace choreo

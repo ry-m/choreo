@@ -1,62 +1,74 @@
 #pragma once
-#include "analysis/MusicState.h"
+// SDL_GPU render graph: scene (raymarched, HDR, dynamic resolution) -> feedback/trails -> bloom
+// (soft-threshold prefilter, 5-level down/up chain) -> final composite (chromatic aberration, flash,
+// ACES tonemap, vignette, grain/dither) into any 8-bit target: the swapchain live, or an offscreen
+// texture for the offline renderer. Shaders are MSL compiled at runtime: shaders/common.metal is
+// prepended to every scene_<id>.metal, post.metal holds the post passes.
+#include "render/Director.h"
 #include <string>
+#include <vector>
 
-struct SDL_Window;
 struct SDL_GPUDevice;
 struct SDL_GPUGraphicsPipeline;
 struct SDL_GPUTexture;
+struct SDL_GPUSampler;
+struct SDL_GPUCommandBuffer;
 
 namespace choreo {
 
-// Must match `Uniforms` in shaders/*.metal (all float4 for alignment).
-struct FrameUniforms {
-    float resTime[4];  // width, height, time, beatPhase
-    float beat[4];     // beatPulse, kick, snare, hat
-    float spec[4];     // bass, mid, treble, loudness
-    float misc[4];     // energyRatio, brightness, bpm, beatCount
-    float motion[4];   // travel, twist, hue, flash
-    float mode[4];     // x: 1 = calibration display
-};
-
 class Renderer {
 public:
-    bool init(SDL_Window* window, const std::string& shaderDir);
+    // outFormat: format of the textures passed to render() (an SDL_GPUTextureFormat).
+    bool init(SDL_GPUDevice* device, int outFormat, const std::string& shaderDir);
+    bool reloadShaders();  // hot reload; keeps the old pipelines if anything fails to compile
     void shutdown();
-    // dt: seconds since last frame. Integrates music into smooth motion, then draws.
-    void render(const MusicState& m, float dt);
 
-    // Frame-time budget used by dynamic resolution (the app also caps to this rate).
-    void setTargetFps(float fps) { targetFps_ = fps; }
-    // Calibration display: plain full-screen flash on each beat plus a beat-phase bar.
-    void setCalibrationMode(bool on) { calibration_ = on; }
+    // Records every pass into cmd; the final image goes to `target` (w x h).
+    void render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h, int scene,
+                const SceneUniforms& u, const PostLook& post);
+    // Calibration display (A/V sync): plain flash on each beat plus a beat-phase bar, no post.
+    void renderCalibration(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h,
+                           float beatPhase, float bpm);
+
+    // Dynamic resolution: call once per frame with the measured frame time.
+    void adaptResolution(float dt, float targetFps, float refreshHz);
+    void setScale(float s) { scale_ = s; fixedScale_ = true; }
+    void resetHistory() { historyValid_ = false; }  // next frame starts without trails (after a seek)
+    // Cap on raymarched pixels regardless of display size (keeps the GPU at roughly half load).
+    void setMaxPixels(float px) { maxPixels_ = px; }
     float renderScale() const { return scale_; }
     int renderWidth() const { return rw_; }
     int renderHeight() const { return rh_; }
 
 private:
-    bool buildPipeline(const std::string& path);
-    bool ensureSceneTexture(unsigned w, unsigned h);
-    void adaptResolution(float dt);
+    SDL_GPUGraphicsPipeline* makePipeline(const std::string& src, const char* entry, int format,
+                                          int samplers, const std::string& what);
+    bool buildAll(std::vector<SDL_GPUGraphicsPipeline*>& scenes, std::vector<SDL_GPUGraphicsPipeline*>& post);
+    bool ensureTargets(unsigned w, unsigned h);
+    void releaseTargets();
 
-    SDL_Window* window_ = nullptr;
     SDL_GPUDevice* device_ = nullptr;
-    SDL_GPUGraphicsPipeline* pipeline_ = nullptr;
+    int outFormat_ = 0;
+    std::string shaderDir_;
+    std::vector<SDL_GPUGraphicsPipeline*> scenes_;  // one per kScenes entry
+    // post_: feedback, prefilter, down, up, final, calibrate
+    std::vector<SDL_GPUGraphicsPipeline*> post_;
+    SDL_GPUSampler* linear_ = nullptr;
 
-    // The scene is raymarched into an offscreen texture at a dynamic fraction of the
-    // window resolution, then upscaled to the swapchain. This keeps the GPU (which the
-    // macOS compositor shares) well below saturation.
+    static constexpr int kBloomLevels = 5;
     SDL_GPUTexture* scene_ = nullptr;
-    unsigned sceneW_ = 0, sceneH_ = 0;
-    int rw_ = 0, rh_ = 0;
-    float scale_ = 0.5f, maxScale_ = 1.0f;
-    float targetFps_ = 60.f, refreshHz_ = 60.f, dtAvg_ = 1.f / 60.f, adaptTimer_ = 0.f, raiseCooldown_ = 0.f;
+    SDL_GPUTexture* history_[2] = {};
+    SDL_GPUTexture* down_[kBloomLevels] = {};
+    SDL_GPUTexture* up_[kBloomLevels] = {};
+    unsigned outW_ = 0, outH_ = 0, texW_ = 0, texH_ = 0;
+    unsigned levelW_[kBloomLevels] = {}, levelH_[kBloomLevels] = {};
+    int cur_ = 0;
+    bool historyValid_ = false;
 
-    // Motion integrators: visuals accumulate music-driven velocity so they never jump.
-    float time_ = 0, travel_ = 0, twist_ = 0, hue_ = 0, flash_ = 0;
-    int lastBeat_ = 0, bars_ = 0;
-    bool barsKnown_ = false;
-    bool calibration_ = false;
+    int rw_ = 0, rh_ = 0;
+    float scale_ = 0.6f, maxScale_ = 1.f, maxPixels_ = 1.5e6f;
+    bool fixedScale_ = false;
+    float dtAvg_ = 1.f / 60.f, adaptTimer_ = 0.f, raiseCooldown_ = 0.f;
 };
 
 } // namespace choreo

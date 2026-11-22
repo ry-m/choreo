@@ -32,6 +32,9 @@ struct MusicState {
     bool  sectionLiftConfirmed = false; // ...and it was a lift
     float sectionProb = 0, liftProb = 0;  // latest probabilities that this beat starts a section / lift
     int   beatsSinceSection = 0;        // beats since the last announced or confirmed section start
+    // Running counts of the four events above. The flags last one ~10 ms hop, so a 60 fps
+    // reader can skip them; compare these counts between frames instead.
+    int   sectionChanges = 0, sectionLifts = 0, sectionConfirms = 0, liftConfirms = 0;
 
     // Instrument-ish onsets
     float kick = 0, snare = 0, hat = 0;

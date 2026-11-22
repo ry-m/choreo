@@ -126,6 +126,10 @@ void Analyzer::updateSections(double beatTime, int inBar) {
             state_.sectionLiftConfirmed = fire(lift, prevBeatInBar_ == 0, lastLiftConf_);
         }
     }
+    state_.sectionChanges += state_.sectionChange;
+    state_.sectionLifts += state_.sectionLift;
+    state_.sectionConfirms += state_.sectionConfirmed;
+    state_.liftConfirms += state_.sectionLiftConfirmed;
     if (state_.sectionChange || state_.sectionLift) state_.beatsSinceSection = 0;
     else if ((state_.sectionConfirmed || state_.sectionLiftConfirmed) && state_.beatsSinceSection > 1) state_.beatsSinceSection = 1;
     if (recordEvents) {
