@@ -4,6 +4,7 @@
 //
 //   choreo-render song.wav --cuts                  # sheet: each cut at -1 frame, on the cut, +1 beat, +2 beats
 //   choreo-render song.wav --at 30,61.5 --size 1280x720
+//   choreo-render song.wav --at 80,80.1,80.2,80.3 --sheet    # one image, 4 frames per row
 //   choreo-render song.wav --events                # director events + analyser beats/downbeats/sections
 //   choreo-render song.wav --bench --size 3024x1964 --scale 0.49   # GPU ms per frame, per scene
 #include "Png.h"
@@ -112,14 +113,14 @@ struct Gpu {
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s audio [--out DIR] [--size WxH] [--scale S] [--fps N] [--at T,T..] [--cuts] "
-                             "[--events] [--scene N] [--bench] [--from S] [--to S]\n", argv[0]);
+                             "[--sheet] [--events] [--scene N] [--bench] [--from S] [--to S]\n", argv[0]);
         return 1;
     }
     std::string out = "render";
     unsigned W = 640, H = 360;
     float scale = 1.f, fps = 60.f;
     std::vector<double> at;
-    bool cuts = false, events = false, bench = false;
+    bool cuts = false, events = false, bench = false, asSheet = false;
     int pinScene = -1;
     double from = 0, to = 1e9;
     for (int i = 2; i < argc; ++i) {
@@ -135,6 +136,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--cuts")) cuts = true;
         else if (!std::strcmp(argv[i], "--events")) events = true;
         else if (!std::strcmp(argv[i], "--bench")) bench = true;
+        else if (!std::strcmp(argv[i], "--sheet")) asSheet = true;
     }
 
     std::vector<float> audio; double sr = 0;
@@ -188,8 +190,17 @@ int main(int argc, char** argv) {
     // ---- Which frames to render ---------------------------------------------------------------
     auto frameAt = [&](double t) { return std::clamp(long(std::lround(t * fps)), 0L, long(frames.size()) - 1); };
     std::vector<long> shots;                       // frames to save as single PNGs
-    std::vector<std::array<long, 4>> sheetRows;    // cut contact sheet
-    for (double t : at) shots.push_back(frameAt(t));
+    std::vector<std::array<long, 4>> sheetRows;    // contact sheet rows (cuts, or --at frames with --sheet)
+    constexpr long kNone = -1000000;
+    if (asSheet) {
+        for (size_t i = 0; i < at.size(); i += 4) {
+            std::array<long, 4> row{kNone, kNone, kNone, kNone};
+            for (size_t k = 0; k < 4 && i + k < at.size(); ++k) row[k] = frameAt(at[i + k]);
+            sheetRows.push_back(row);
+        }
+    } else {
+        for (double t : at) shots.push_back(frameAt(t));
+    }
     if (cuts) {
         for (auto& e : d.events) {
             if (std::strcmp(e.kind, "cut") || e.time < from) continue;
@@ -230,7 +241,7 @@ int main(int argc, char** argv) {
     // Render the needed frames in order, with ~0.75 s of warm-up before each so trails are right.
     std::set<long> need;
     for (long f : shots) need.insert(f);
-    for (auto& r : sheetRows) for (long f : r) need.insert(std::clamp(f, 0L, long(frames.size()) - 1));
+    for (auto& r : sheetRows) for (long f : r) if (f != kNone) need.insert(std::clamp(f, 0L, long(frames.size()) - 1));
     const long warm = long(fps * 0.75f);
     std::vector<std::vector<uint8_t>> sheet(sheetRows.size() * 4);
     std::vector<double> ms;
@@ -251,7 +262,7 @@ int main(int argc, char** argv) {
             }
             for (size_t r = 0; r < sheetRows.size(); ++r)
                 for (int c = 0; c < 4; ++c)
-                    if (std::clamp(sheetRows[r][c], 0L, long(frames.size()) - 1) == f) sheet[r * 4 + c] = rgb;
+                    if (sheetRows[r][c] != kNone && std::clamp(sheetRows[r][c], 0L, long(frames.size()) - 1) == f) sheet[r * 4 + c] = rgb;
         }
         next = f + 1;
     }
@@ -267,12 +278,12 @@ int main(int argc, char** argv) {
                 for (unsigned y = 0; y < H; ++y) {
                     uint8_t* dst = &img[(size_t(r * (H + gap) + y) * SW + c * (W + gap)) * 3];
                     std::memcpy(dst, &tile[size_t(y) * W * 3], W * 3);
-                    if (c == 1 && y < 4) std::memset(dst, 255, W * 3);
+                    if (cuts && c == 1 && y < 4) std::memset(dst, 255, W * 3);
                 }
             }
-        std::string name = out + "/cuts.png";
+        std::string name = out + (cuts ? "/cuts.png" : "/sheet.png");
         writePng(name, img.data(), SW, SH);
-        std::printf("wrote %s (%zu cuts)\n", name.c_str(), sheetRows.size());
+        std::printf("wrote %s (%zu rows)\n", name.c_str(), sheetRows.size());
     }
     if (!ms.empty())
         std::printf("rendered %zu frames at %ux%u (scale %.2f): GPU %.2f ms median, %.2f ms p95\n", ms.size(), W, H, scale,

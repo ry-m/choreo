@@ -20,8 +20,12 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
   `CHOREO_TRACKER=old`; many `CHOREO_*` env tuning hooks, e.g. `CHOREO_BT*`), `Features` (mel features, shared with training), `BeatNet`
   (streaming TCN inference), `MusicState.h` (what visuals consume).
 - `src/audio/` — capture (system / per-app tap / mic), clock pairs for A/V sync.
-- `src/app/`, `src/render/`, `shaders/` — app, renderer, visuals.
-- `tools/` — `choreo-analyze` (offline WAV → beats/tempo), `choreo-live-eval` (plays Spotify,
+- `src/render/` — `Director` (visual contract: hits, cuts on the beat, palettes, cameras; pure CPU),
+  `Renderer` (SDL_GPU render graph: HDR scene → trails → bloom → tonemap), `Scenes.h` (scene table).
+- `shaders/` — `common.metal` (prepended to each `scene_<id>.metal`), `post.metal`. R in the app hot-reloads.
+- `src/app/` — app (keys 1-4 pin a scene, 0 = director).
+- `tools/` — `choreo-render` (headless WAV → analyser → director → GPU: `--cuts` contact sheet,
+  `--at T,.. [--sheet]` PNGs, `--events`, `--bench` GPU ms per scene), `choreo-analyze` (offline WAV → beats/tempo), `choreo-live-eval` (plays Spotify,
   captures silently, scores; `--record` saves WAVs), `choreo-features`, eval scripts.
 - `tools/ml/` — `build_dataset.py` → `train_beats.py` → `models/beatnet.bin`; `harmonix.py` (align
   Spotify recordings to Harmonix annotations); `split.json` (train/val/test, committed).
@@ -40,6 +44,10 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
   then `... sections.py export` (→ `models/sections.bin`, checked by `./build/test_sections models/sections.bin
   models/sections_testvec.bin`), `... sections.py eval-cpp test` (27 recorded songs through the C++ analyser,
   ±1 beat). Current: change F 0.46 on the beat / 0.52 confirmed; lift 0.35 / 0.40.
+
+- Visuals: check with `choreo-render` (look at the PNGs), not a live demo. Cuts: `tools/eval_cuts.py test`
+  (immediate cuts on downbeats, confirmed one beat later; 53% at an annotated boundary). GPU: `choreo-render
+  song.wav --bench --size 3024x1964 --scale 0.49` (all scenes ≤ ~7.5 ms median on M5).
 
 ## Data (never commit audio, features or datasets)
 `~/.cache/choreo/`: `datasets/{gtzan,ballroom,harmonix}`, `rec/` (Spotify set), `harmonix_rec/`,

@@ -304,6 +304,38 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
 - Scene director: continuous blending and intensity within a section; on a detected section change, a
   hard switch (new scene, palette, camera) exactly on that downbeat; smaller accents on phrase boundaries
 - 8–12 distinct scenes (fractal tunnels, kaleidoscopic Mandelbox, liquid chrome, particle galaxies, neon grids)
+- **Status: visual engine v1** (`src/render/{Director,Renderer,Scenes.h}`, `shaders/`).
+  - Scenes (`shaders/scene_<id>.metal`, each prepended with `common.metal`; palette family, camera
+    style and post character in `Scenes.h`): **Prism Cathedral** (dispersive glass crystals refracting a
+    nave of beat-lit windows; lifts shatter the cluster; orbit camera), **Ember Bloom** (volumetric fire
+    around an obsidian core with lava veins; fire ring each beat, sparks on hats, eruption on lifts; low
+    rising camera with bass shake), **Laser Nebula** (analytic laser fans/cages/curtains over a mirrored
+    neon floor toward a portal ring; flight camera with per-bar roll), **Kaleido Tunnel**.
+  - Director: `MusicState` gained event counts (`sectionChanges/Lifts/Confirms`, `liftConfirms`): flags
+    last one ~10 ms hop and 60 fps frames skipped some. Lift → hit (flash ~0.55 beat, burst, shatter, FOV
+    punch); `liftProb ≥ 0.9` (`CHOREO_CUT_PROB`) → immediate cut on the downbeat; lift confirmed → cut one
+    beat later, under the decaying flash; plain change/confirm → next palette (blended over ~⅓ beat), new
+    camera preset (eased), geometry variant; after 48 bars without a cut a plain change cuts too; no
+    section model → cut every 32 bars. 4-bar phrase accents, build tension over 8-bar phrases + energy rise.
+    Trails are off for 0.15 s after a cut so the old scene never smears into the new one.
+  - Threshold choice: on test, lifts with `liftProb ≥ 0.9` hit an annotated lift 49% of the time vs 29% for
+    all lifts (val: 0.9 → 42% of cuts at a boundary vs 27% at 0.8).
+  - Post: HDR (RGBA16F) scene at dynamic resolution → feedback (brighter-than-new trails, zoom/rotate) →
+    soft-threshold bloom, 5 levels down/up → final at full resolution (radial chromatic aberration, flash,
+    ACES, saturation, vignette, grain + dither). 12 passes.
+  - Offline: `choreo-render song.wav --cuts` (contact sheet per cut: frame before, cut, +1, +2 beats),
+    `--at T,.. [--sheet]`, `--events`, `--bench`. `tools/eval_cuts.py [val|test]` scores cuts.
+  - Test (27 Harmonix recordings, 98 min): 1.2 cuts/min, 1.9 smaller changes/min, 1.8 lift hits/min; all
+    immediate cuts on a downbeat and all 80 confirmed cuts exactly one beat after theirs; 53% of cuts at an
+    annotated boundary (±1 beat), 36% at a lift; 38% of annotated lifts get a cut. Cuts reach the screen
+    +39 ms (median) after the analyser's beat time: that's the beat detector's causal latency (beat events
+    are announced ~30–45 ms after the beat; the beat *phase* is predicted and on time). The A/V calibration
+    (`[`/`]`) applies to all of it.
+  - GPU (M5, `--bench`, 3024×1964 output with the 1.5 MP raymarch cap → 1481×962, all passes): laser 3.5 ms,
+    prism 4.8, ember 5.5, tunnel 7.3 (p95 ≤ 8.4) — 21–44% of a 60 fps frame.
+  - Next: more scenes (liquid chrome ripples, particle galaxy with compute, Mandelbox), crossfade-free
+    transitions that use the outgoing frame (shatter/zoom-through), anticipation from the build (risers →
+    tension), per-scene variants that change geometry more, GPU particles.
 
 ### M5 — Polish & intelligence
 - Optional learned beat/downbeat model
