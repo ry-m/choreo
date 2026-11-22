@@ -335,7 +335,7 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
     are announced ~30–45 ms after the beat; the beat *phase* is predicted and on time). The A/V calibration
     (`[`/`]`) applies to all of it.
   - GPU (M5, `--bench`, 3024×1964 output with the 1.5 MP raymarch cap → 1481×962, all passes): laser 3.5 ms,
-    prism 4.8, ember 5.5, tunnel 7.3 (p95 ≤ 8.4) — 21–44% of a 60 fps frame.
+    prism 5.9 (bevelled, edge-antialiased), ember 5.5, tunnel 7.3 (p95 ≤ 8.4) — 21–44% of a 60 fps frame.
   - Next: more scenes (liquid chrome ripples, particle galaxy with compute, Mandelbox), crossfade-free
     transitions that use the outgoing frame (shatter/zoom-through), anticipation from the build (risers →
     tension), per-scene variants that change geometry more, GPU particles.
