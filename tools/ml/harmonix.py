@@ -86,53 +86,123 @@ def activation(wav):
     if "_model" not in globals():
         _model = BeatNet(); _model.load_state_dict(torch.load(os.path.join(ROOT, "models", "beatnet.bin.pt"), map_location="cpu")); _model.eval()
     with torch.no_grad():
-        a = torch.sigmoid(_model(torch.from_numpy(x).unsqueeze(0)))[0, :, 0].numpy()
-    return np.roll(a, -LOOKAHEAD), off  # undo the network's look-ahead delay
+        a = torch.sigmoid(_model(torch.from_numpy(x).unsqueeze(0)))[0].numpy()
+    a = np.roll(a, -LOOKAHEAD, axis=0)  # undo the network's look-ahead delay
+    return a[:, 0], a[:, 1], off
+
+
+def offset_scores(a, b, off, dts):
+    out = []
+    for dt in dts:
+        k = np.round((b + dt - off) * 100).astype(int)
+        k = k[(k >= 0) & (k < len(a))]
+        out.append(float(a[k].mean()) if len(k) else 0.0)
+    return np.array(out)
+
+
+def resolve_bar(a, ad, b, d, off, scale, dt, period):
+    """The recording starts a variable few hundred ms into the song (the tap is created after
+    Spotify reports playing), so offsets of up to ~1 s are real. A beat grid shifted by whole
+    beats fits the beat activation equally well, so pick among
+    such shifts by the downbeat activation at the annotated downbeats. Returns (offset,
+    downbeats_trusted)."""
+    cands = []
+    for k in range(-4, 5):
+        o = dt + k * period
+        sb = offset_scores(a, b * scale, off, [o])[0]
+        sd = offset_scores(ad, d * scale, off, [o])[0] if len(d) else 0.0
+        cands.append((sd, sb, o))
+    best_sb = max(c[1] for c in cands)
+    ok = sorted([c for c in cands if c[1] >= 0.85 * best_sb], reverse=True)
+    if len(d) and (len(ok) == 1 or ok[0][0] >= 1.5 * ok[1][0]):
+        return ok[0][2], True
+    # Ambiguous bar position: keep the best beat fit (beat labels are right either way) and
+    # mark the downbeats untrusted so training masks them.
+    return dt, False
+
+
+def fit(a, b, off):
+    """Best (scale, offset) mapping annotation times onto the recording. First a plain offset
+    (same master: codec padding / leading silence, within 1 s); if that's not clear, a time
+    scale as well (some Spotify versions are a differently-timed master, e.g. 128 vs 120 BPM)."""
+    dts = np.arange(-1.0, 1.0001, 0.005)
+    sc = offset_scores(a, b, off, dts)
+    if sc.max() >= 0.25 and sc.max() >= 2.0 * np.median(sc):
+        return 1.0, float(dts[sc.argmax()]), float(sc.max()), sc
+    plain = (1.0, float(dts[sc.argmax()]), float(sc.max()), sc)
+    best = (1.0, 0.0, -1.0, sc)
+    wide = np.arange(-6.0, 6.0001, 0.01)
+    for s in np.arange(0.92, 1.0801, 0.0025):
+        ss = offset_scores(a, b * s, off, wide)
+        if ss.max() > best[2]:
+            best = (float(s), float(wide[ss.argmax()]), float(ss.max()), ss)
+    # A scaled fit must be convincing: many scale/offset pairs are tried.
+    if best[2] < 0.35 or best[2] < 3.0 * np.median(best[3]):
+        return plain                     # judged by the usual (weaker) offset-only threshold
+    return best
 
 
 def cmd_align(rec_dir):
+    """Global offset search, then a per-window drift check. A 10 s window is dropped only when
+    it *contradicts* the global offset (its own clear best offset is elsewhere, as after an
+    edit or a differently-timed master). Windows where the current network is merely unsure
+    are kept: those hard passages are what the new training data is for."""
     meta, out, rejected = metadata(), [], []
+    dts = np.arange(-0.25, 0.2501, 0.005)   # local (per-window) drift search
     for wav in sorted(os.listdir(rec_dir)):
         fid = wav[:-4]
         if not wav.endswith(".wav") or fid not in meta:
             continue
         beats, downs, segs = annotations(fid)
-        a, off = activation(os.path.join(rec_dir, wav))
-        b = np.array(beats)
-        best, bestS = 0.0, -1.0
-        scores = []
-        for dt in np.arange(-0.25, 0.2501, 0.005):
-            k = np.round((b + dt - off) * 100).astype(int)
-            k = k[(k >= 0) & (k < len(a))]
-            s = float(a[k].mean()) if len(k) else 0.0
-            scores.append(s)
-            if s > bestS:
-                best, bestS = float(dt), s
-        sc = np.array(scores)
+        a, ad, off = activation(os.path.join(rec_dir, wav))
+        b0 = np.array(beats)
+        scale, best, bestS, sc = fit(a, b0, off)
         if bestS < 0.2 or bestS < 1.8 * np.median(sc):
-            rejected.append((fid, round(bestS, 3)))
+            rejected.append((fid, f"no clear offset {bestS:.2f}"))
             continue
-        # Keep only the 10 s windows where the shifted beat grid still sits on the network's
-        # beats (an edit or extended section makes later windows drift and they're dropped).
-        good = []
-        for w0 in np.arange(0, len(a) / 100, 10.0):
-            bw = b[(b + best >= w0) & (b + best < w0 + 10)] + best
+        best, down_ok = resolve_bar(a, ad, b0, np.array(downs), off, scale, best,
+                                    float(np.median(np.diff(b0))) * scale)
+        tf = lambda t, s=scale, o=best: t * s + o   # annotation time -> recording time
+        b = tf(b0)
+        best = 0.0                               # b is already in recording time below
+        good, bad = [], 0
+        end = min(len(a) / 100, b[-1] + best + 0.5)      # labels only up to the last annotated beat
+        for w0 in np.arange(max(0.0, b[0] + best - 0.5), end, 10.0):
+            w1 = min(w0 + 10, end)
+            bw = b[(b + best >= w0) & (b + best < w1)]
             if len(bw) < 4:
                 continue
-            k = np.round((bw - off) * 100).astype(int); k = k[(k >= 0) & (k < len(a))]
-            if len(k) and a[k].mean() >= 0.2:
-                good.append((w0, w0 + 10))
-        if sum(e - s for s, e in good) < 30:
-            rejected.append((fid, "few good windows"))
+            ls = offset_scores(a, bw, off, dts)
+            lbest = float(dts[ls.argmax()])
+            clear = ls.max() >= 0.25 and ls.max() >= 1.6 * np.median(ls)
+            if clear and abs(lbest - best) > 0.03:
+                bad += 1
+                continue
+            good.append([float(w0), float(w1)])
+        if sum(e - s for s, e in good) < 30 or bad > 0.3 * (len(good) + bad):
+            rejected.append((fid, f"drift ({bad} contradicting windows)"))
             continue
-        inside = lambda t: any(s <= t < e for s, e in good)
-        out.append(dict(name=fid, wav=os.path.join(rec_dir, wav), offset=best, score=bestS, spans=good,
-                        beats=[t + best for t in beats if inside(t + best)],
-                        downbeats=[t + best for t in downs if inside(t + best)],
-                        segments=[(t + best, l) for t, l in segs], genre=meta[fid]["Genre"]))
+        merged = []
+        for s0, e0 in good:
+            if merged and abs(merged[-1][1] - s0) < 1e-6:
+                merged[-1][1] = e0
+            else:
+                merged.append([s0, e0])
+        out.append(dict(name=fid, wav=os.path.join(rec_dir, wav), offset=float(tf(0.0)), scale=float(scale),
+                        score=bestS, spans=merged, dropped=bad, downbeats_ok=down_ok, beats=[float(tf(t)) for t in beats],
+                        downbeats=[float(tf(t)) for t in downs], segments=[(float(tf(t)), l) for t, l in segs],
+                        genre=meta[fid]["Genre"]))
     os.makedirs(ML, exist_ok=True)
     json.dump(out, open(f"{ML}/harmonix_aligned.json", "w"))
-    print(f"aligned {len(out)}, rejected {len(rejected)}: {rejected[:10]}")
+    hours = sum(e - s for d in out for s, e in d["spans"]) / 3600
+    print(f"aligned {len(out)} ({hours:.1f} h labelled), rejected {len(rejected)}:")
+    for r in rejected:
+        print("  ", *r)
+    print(f"time-scaled fits: {[(d['name'], round(d['scale'], 4)) for d in out if d['scale'] != 1.0]}")
+    print(f"downbeats trusted for {sum(d['downbeats_ok'] for d in out)}/{len(out)} songs")
+    offs = [d["offset"] for d in out]
+    print(f"offsets: median {1000 * np.median(offs):+.0f} ms, range {1000 * min(offs):+.0f}..{1000 * max(offs):+.0f} ms; "
+          f"windows dropped for drift: {sum(d['dropped'] for d in out)}")
 
 
 if __name__ == "__main__":

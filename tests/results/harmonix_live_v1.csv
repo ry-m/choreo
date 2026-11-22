@@ -1,0 +1,159 @@
+title,artist,ref_bpm,final_bpm,present_pct,correct_pct,related_pct,lock_sec,flips
+"0352_boogiewonderland","Earth  Wind & Fire",130.0,132.56,98.9,100.0,100.0,3.1,0
+"0404_holditagainstme","Britney Spears",133.0,132.71,84.1,100.0,100.0,0.1,0
+"0408_icanonlyimagine","David Guetta feat. Chris Brown & Lil Wayne",128.0,127.76,97.8,100.0,100.0,4.6,0
+"0376_earthquake","Labrinth feat. Busta Rhymes",77.0,152.02,33.7,0.0,99.5,-1.0,1
+"0473_payphone","Maroon 5",110.0,110.00,97.8,100.0,100.0,4.7,0
+"0495_someonelikeyou","Adele",67.0,132.61,56.6,0.0,99.2,-1.0,3
+"0411_ifihadyou","Adam Lambert",131.0,131.13,99.4,100.0,100.0,0.1,0
+"0441_lovingyoutonight","Andrew Allen",93.0,93.06,98.7,98.5,98.5,5.0,2
+"0453_mygirl","Mindless Behavior",74.0,147.72,97.4,0.0,100.0,-1.0,0
+"0331_againstallodds","Phil Collins",58.0,147.58,46.2,0.0,100.0,-1.0,0
+"0479_pricetag","Jessie J",87.0,145.48,86.2,97.0,98.9,3.3,7
+"0440_loveyoulikealovesong","Selena Gomez & The Scene",118.0,117.23,99.2,100.0,100.0,1.5,0
+"0494_somebodythatiusedtoknow","Gotye feat. Kimbra",130.0,129.14,99.6,97.2,97.2,6.2,2
+"0464_oneofus","Joan Osborne",87.0,156.50,92.1,99.8,100.0,3.0,1
+"0379_et","Katy Perry feat. Kanye West",75.0,151.84,97.9,0.0,100.0,-1.0,0
+"0432_letsgo","Calvin Harris feat. Ne-Yo",128.0,117.71,96.9,100.0,100.0,2.0,0
+"0455_nevertearusapart","INXS",195.0,135.67,95.4,0.0,99.9,-1.0,2
+"0474_pleasedontgo","Mike Posner",120.0,120.10,90.5,100.0,100.0,17.6,0
+"0489_shakeyourbody","The Jacksons",118.0,117.42,97.4,100.0,100.0,5.2,0
+"0417_imtoosexy","Right Said Fred",122.0,122.05,95.5,100.0,100.0,7.6,0
+"0493_somebodysheartbreak","Hunter Hayes",75.0,129.20,98.7,0.0,96.8,-1.0,3
+"0437_lovelikewoe","The Ready Set",90.0,179.75,97.4,78.7,99.9,7.5,3
+"0407_humpinaround","Bobby Brown",110.0,110.30,99.8,99.7,99.7,0.9,2
+"0333_allday","Cody Simpson",85.0,113.25,93.4,0.9,99.0,17.8,5
+"0459_notoveryou","Gavin DeGraw",71.0,142.05,98.9,0.0,99.8,-1.0,1
+"0242_satisfaction","Benny Benassi",130.0,130.00,96.7,99.6,99.6,2.5,1
+"0421_ittakestwo","Rob Base & DJ E-Z Rock",112.0,111.67,99.5,97.6,97.6,5.0,1
+"0429_kissinu","Miranda Cosgrove",110.0,110.07,94.9,100.0,100.0,10.0,0
+"0400_heatofthemoment","Asia",137.0,143.60,82.4,47.4,47.4,54.7,5
+"0468_openarms","Journey",102.0,129.22,64.7,78.4,78.4,3.1,2
+"0434_lights","Ellie Goulding",120.0,119.97,98.8,100.0,100.0,2.6,1
+"0327_youmakemefeel","Cobra Starship feat. Sabi",132.0,147.30,94.0,86.1,86.1,19.8,9
+"0409_idontlikeyou","Eva Simons",128.0,128.00,92.2,100.0,100.0,12.6,0
+"0355_brokenhearted","Karmin",120.0,120.28,99.9,97.9,97.9,4.8,1
+"0469_ordinaryworld","Duran Duran",70.0,167.13,89.3,0.0,100.0,-1.0,0
+"0367_dontdreamitsover","Crowded House",81.0,164.63,97.3,0.0,99.9,-1.0,1
+"0363_darkside","Kelly Clarkson",119.0,108.26,78.4,99.0,99.0,16.4,1
+"0416_impossible","Shontelle",90.0,87.54,82.7,72.9,74.9,2.8,7
+"0496_sparksfly","Taylor Swift",115.0,129.24,96.6,98.5,98.5,2.0,1
+"0393_giveyourheartabreak","Demi Lovato",123.0,122.84,93.6,100.0,100.0,2.1,0
+"0350_blowme","P!nk",114.0,113.99,96.6,100.0,100.0,6.6,0
+"0456_nohands","Waka Flocka Flame feat. Roscoe Dash & Wale",65.0,131.48,97.6,0.0,99.7,-1.0,1
+"0447_mindyourmanners","Chiddy Bang",93.0,129.30,94.9,1.1,1.1,11.7,7
+"0351_blowup","Sammy Adams",83.0,165.38,98.6,0.0,100.0,-1.0,0
+"0454_myohmy","Tristan Prettyman",96.0,93.99,98.3,100.0,100.0,3.7,0
+"0035_boyfriend","Justin Bieber",97.0,97.05,93.4,100.0,100.0,10.3,0
+"0420_itsrainingmen","The Weather Girls",137.0,136.12,98.6,100.0,100.0,2.2,0
+"0111_girlsonfilm","Duran Duran",131.0,127.86,96.3,100.0,100.0,5.7,0
+"0371_downunder","Men at Work",105.0,107.73,99.5,94.6,94.6,1.2,1
+"0435_lookatmenow","Chris Brown feat. Lil Wayne & Busta Rhymes",73.0,145.70,89.1,0.0,97.1,-1.0,8
+"0452_myfirstkiss","3OH!3 feat. Ke$ha",138.0,138.69,94.4,99.7,99.7,3.0,2
+"0463_onemorenight","Maroon 5",93.0,93.01,96.7,97.7,98.3,3.6,4
+"0433_lighters","Bad Meets Evil feat. Bruno Mars",90.0,114.69,76.0,99.4,99.4,15.8,5
+"0430_lastfridaynight","Katy Perry",126.0,91.55,96.4,100.0,100.0,2.9,0
+"0466_onthedarkside","Beaver Brown",174.0,131.09,81.2,96.7,98.1,5.6,4
+"0360_coolerthanme","Mike Posner",130.0,194.82,96.1,99.9,99.9,5.6,1
+"0401_hello","Lionel Richie with Jennifer Nettles",128.0,143.43,84.5,99.8,100.0,1.4,1
+"0395_gold","Britt Nicole",96.0,126.94,97.4,99.6,99.6,4.2,1
+"0359_cominghome","Diddy - Dirty Money feat. Skylar Grey",84.0,166.71,75.0,6.8,91.8,159.0,7
+"0348_blackout","Breathe Carolina",122.0,123.01,98.9,97.4,97.4,5.3,1
+"0368_dontwakemeup","Chris Brown",128.0,137.61,89.7,97.0,97.0,0.1,2
+"0485_rollinginthedeep","Adele",105.0,104.95,98.1,100.0,100.0,2.4,0
+"0403_heybaby","Pitbull feat. T-Pain",128.0,128.10,100.0,97.6,97.6,4.9,1
+"0418_inthedark","Dev",124.0,124.95,93.3,100.0,100.0,0.1,0
+"0439_lovethewayyoulie","Eminem feat. Rihanna",87.0,86.90,90.3,98.6,100.0,4.0,3
+"0370_downonme","Jeremih feat. 50 Cent",80.0,160.14,86.3,0.0,86.6,-1.0,7
+"0391_givemeallyourluvin","Madonna feat. Nicki Minaj & M.I.A.",145.0,144.99,98.7,99.4,99.4,3.3,1
+"0471_paradise","Coldplay",70.0,108.75,82.6,0.0,99.8,-1.0,1
+"0388_gangnamstyle","PSY",133.0,132.28,98.9,100.0,100.0,2.5,0
+"0364_deuces","Chris Brown feat. Tyga & Kevin McCall",74.0,147.74,99.1,0.0,95.0,-1.0,5
+"0398_goodtime","Owl City feat. Carly Rae Jepsen",126.0,125.52,97.8,100.0,100.0,2.2,0
+"0460_numb","Usher",130.0,126.04,74.2,95.4,95.4,17.5,5
+"0334_alltherightplaces","Zach Heckendorf",94.0,147.44,99.0,99.0,99.0,2.0,2
+"0004_abc","The Jackson 5",94.0,120.66,98.4,0.0,0.0,-1.0,1
+"0423_iwannago","Britney Spears",130.0,129.60,99.0,100.0,100.0,2.0,0
+"0478_prayforyou","Jaron and the Long Road to Love",70.0,141.18,97.5,0.0,100.0,-1.0,0
+"0443_magic","B.o.B feat. Rivers Cuomo",165.0,164.90,97.8,99.7,99.7,4.7,1
+"0480_raiseyourglass","P!nk",122.0,121.93,100.0,95.8,95.8,8.5,1
+"0369_dontyouworrychild","Swedish House Mafia feat. John Martin",130.0,129.02,79.2,96.7,96.7,7.5,4
+"0340_backintime","Pitbull",127.0,127.29,95.5,100.0,100.0,1.9,0
+"0424_justadream","Nelly",90.0,89.86,91.2,77.0,77.4,3.8,10
+"0356_californiagurls","Katy Perry",124.0,124.98,95.4,100.0,100.0,9.5,0
+"0392_givemeyourhand","The Ready Set",126.0,126.03,98.2,100.0,100.0,3.6,0
+"0487_secrets","OneRepublic",74.0,147.67,81.7,0.0,100.0,-1.0,0
+"0338_animal","Neon Trees",150.0,147.72,98.4,100.0,100.0,2.6,0
+"0490_showme","Jessica Sutta",128.0,170.49,96.1,91.9,91.9,18.9,3
+"0237_run","Gnarls Barkley",149.0,120.22,93.8,100.0,100.0,2.9,0
+"0428_kingofanything","Sara Bareilles",119.0,118.94,97.0,100.0,100.0,3.5,0
+"0458_notorious","Duran Duran",106.0,106.46,96.6,99.4,99.4,8.1,2
+"0281_theedgeofglory","Kelly Marie",128.0,134.02,99.4,0.0,0.0,-1.0,1
+"0445_memories","David Guetta feat. Kid Cudi",130.0,129.98,99.0,100.0,100.0,1.5,0
+"0442_lullaby","Shawn Mullins",80.0,159.06,98.6,0.0,100.0,-1.0,0
+"0383_feelsoclose","Calvin Harris",128.0,128.31,95.9,100.0,100.0,3.0,0
+"0218_policyoftruth","Depeche Mode",113.0,112.55,95.4,99.3,99.3,13.8,3
+"0477_poundthealarm","Nicki Minaj",125.0,124.88,94.3,100.0,100.0,4.3,0
+"0488_september","Daughtry",75.0,171.78,93.6,0.0,97.6,-1.0,4
+"0389_gettinoveryou","David Guetta & Chris Willis",130.0,129.95,93.0,100.0,100.0,1.6,0
+"0397_goodlife","OneRepublic",95.0,95.03,99.2,100.0,100.0,2.1,0
+"0396_goodfeeling","Flo Rida",129.0,128.06,94.4,100.0,100.0,1.9,0
+"0294_tonighttonight","Hot Chelle Rae",100.0,117.58,98.1,0.0,0.0,-1.0,2
+"0339_aslongasyouloveme","Justin Bieber feat. Big Sean",70.0,120.40,82.6,0.0,99.8,-1.0,1
+"0353_bottomsup","Trey Songz feat. Nicki Minaj",74.0,147.60,97.7,0.0,99.7,-1.0,2
+"0467_onthefloor","Jennifer Lopez",130.0,129.90,92.2,99.9,99.9,12.0,1
+"0366_domino","Jessie J",128.0,126.97,98.4,100.0,100.0,2.4,0
+"0375_dynamite","Taio Cruz",120.0,128.15,99.2,0.0,0.0,-1.0,0
+"0451_mrknowitall","Kelly Clarkson",96.0,184.60,95.1,74.1,74.1,57.0,1
+"0472_partofme","Katy Perry",130.0,128.98,97.9,100.0,100.0,1.4,0
+"0332_alejandro","Lady Gaga",99.0,98.72,88.5,100.0,100.0,27.1,0
+"0446_midnightcity","M83",105.0,104.99,95.6,99.7,99.7,6.1,2
+"0426_justcantgetenough","The Black Eyed Peas",94.0,128.27,97.6,75.5,75.5,2.6,1
+"0386_footloose","Kenny Loggins",174.0,87.22,96.0,1.7,99.4,8.2,5
+"0094_fireflies","Owl City",90.0,116.38,88.2,2.1,4.2,0.1,8
+"0354_brandnewday","Trevor Hall",117.0,117.23,98.3,100.0,100.0,2.4,0
+"0337_alwayssomethingthere","Naked Eyes",150.0,198.25,98.0,100.0,100.0,2.7,0
+"0465_onething","One Direction",126.0,127.10,95.7,100.0,100.0,2.3,0
+"0415_illbewaiting","Michael Franti & Spearhead",97.0,117.59,98.1,100.0,100.0,2.3,0
+"0481_reallove","Jody Watley",109.0,109.11,99.4,100.0,100.0,1.5,0
+"0422_itwillrain","Bruno Mars",75.0,115.86,80.0,0.0,100.0,-1.0,0
+"0249_sensualseduction","Snoop Dogg",120.0,120.10,93.5,100.0,100.0,14.1,0
+"0246_scenario","A Tribe Called Quest",101.0,101.64,88.4,98.8,98.8,5.6,1
+"0419_itgirl","Jason Derulo",92.0,91.96,90.2,97.3,97.5,4.3,4
+"0129_hotinherre","Nelly",107.0,107.07,84.0,98.9,98.9,14.7,3
+"0043_callmemaybe","Carly Rae Jepsen",120.0,119.99,95.9,100.0,100.0,1.6,0
+"0470_ours","Taylor Swift",160.0,161.32,32.4,99.1,99.1,55.4,1
+"0444_maybe","Sick Puppies",84.0,123.02,95.9,0.0,94.8,-1.0,4
+"0329_youreajerk","New Boyz",98.0,100.01,66.5,91.5,91.5,2.7,6
+"0497_speakers","Days Difference",116.0,152.87,94.1,99.5,99.5,1.1,1
+"0124_hello","Martin Solveig",128.0,128.03,99.0,100.0,100.0,1.6,0
+"0427_justthewayyouare","Bruno Mars",109.0,109.47,85.0,100.0,100.0,2.6,0
+"0373_driveby","Train",122.0,135.30,97.4,99.8,99.8,1.4,2
+"0344_beautifullife","Ace of Base",134.0,135.05,95.3,99.6,99.6,6.9,4
+"0024_billionaire","Travie McCoy",87.0,86.72,96.2,98.6,100.0,5.5,1
+"0167_makesomenoise","Beastie Boys",98.0,97.99,97.3,97.3,97.3,7.4,1
+"0022_betteroffalone","Alice DeeJay",137.0,129.94,100.0,0.0,0.0,-1.0,1
+"0152_kingofrock","Run‐D.M.C.",98.0,97.90,99.0,98.2,98.2,2.9,3
+"0341_baggageclaim","Miranda Lambert",81.0,161.46,98.9,0.0,100.0,-1.0,0
+"0402_herestous","Halestorm",80.0,160.12,99.9,0.0,100.0,-1.0,0
+"0335_allyourlife","The Band Perry",66.0,129.86,94.2,0.0,100.0,-1.0,0
+"0119_gunpowderandlead","Miranda Lambert",94.0,147.51,74.1,99.4,99.4,11.2,1
+"0361_countrymustbecountrywide","Brantley Gilbert",84.0,148.04,74.8,14.6,100.0,6.4,2
+"0382_fatherofmine","Everclear",97.0,112.16,96.8,100.0,100.0,4.2,0
+"0381_everythingyouwant","Vertical Horizon",94.0,92.69,95.2,97.3,98.2,4.1,3
+"0027_blackened","Metallica",190.0,129.33,87.2,0.0,48.6,-1.0,7
+"0292_timeslikethese","Foo Fighters",145.0,152.09,91.1,99.1,99.1,1.9,1
+"0482_redsolocup","Toby Keith",165.0,158.67,91.1,98.7,98.7,5.6,1
+"0336_alonewithyou","Jake Owen",109.0,172.15,98.0,96.3,96.3,2.5,2
+"0199_numberofthebeast2","Iron Maiden",200.0,133.78,84.6,0.0,87.6,-1.0,4
+"0100_futureperfecttense","Sweet Billy Pilgrim",120.0,94.10,90.6,100.0,100.0,2.4,0
+"0265_straightlines","Silverchair",128.0,133.90,98.1,98.3,98.3,1.6,1
+"0142_indestructible","Disturbed",90.0,106.61,83.8,0.0,0.0,-1.0,1
+"0413_ifyoucouldonlysee","Tonic",95.0,96.18,97.3,99.0,99.0,7.3,1
+"0038_bringmetolife","Evanescence",95.0,126.13,89.0,3.2,3.2,4.1,1
+"0058_criticalacclaim","Avenged Sevenfold",138.0,137.76,84.2,98.0,98.0,47.7,3
+"0191_newslang","The Shins",130.0,129.88,96.0,100.0,100.0,8.8,0
+"0431_letitrain","David Nail",78.0,156.47,99.2,0.0,100.0,-1.0,0
+"0372_drinkinmyhand","Eric Church",113.0,121.96,97.7,98.4,98.4,3.0,1
+"0380_everybodytalks","Neon Trees",156.0,155.09,99.1,100.0,100.0,1.5,0
+"0410_idontwantthisnighttoend","Luke Bryan",112.0,141.05,99.2,97.7,97.7,4.2,2

@@ -61,13 +61,24 @@ class BeatNet(nn.Module):
 class Clip:
     def __init__(self, e):
         self.file, self.name, self.test = e["file"], e["name"], e["test"]
+        self.split, self.set = e.get("split", "test" if e["test"] else "train"), e["set"]
         hdr = np.fromfile(self.file, dtype=np.int32, count=2)
         self.T, self.D = int(hdr[0]), int(hdr[1])
         self.off = float(np.fromfile(self.file, dtype=np.float32, count=1, offset=8)[0])
         self.x = np.memmap(self.file, dtype=np.float32, mode="r", offset=12, shape=(self.T, self.D))
         self.beats, self.downs = e["beats"], e["downbeats"]
+        self.has_downs = self.downs is not None   # None: bar position unknown, downbeat loss masked
         self.yb = self.target(self.beats)
-        self.yd = self.target(self.downs)
+        self.yd = self.target(self.downs or [])
+        # Labels are trusted only inside spans (Harmonix: where the recording is verified to
+        # match the annotations). Outside them the loss is masked out.
+        self.spans = e.get("spans")
+        self.m = np.ones(self.T, np.float32)
+        if self.spans:
+            self.m[:] = 0
+            for a, b in self.spans:
+                self.m[max(0, int((a - self.off) * FPS)):max(0, int((b - self.off) * FPS))] = 1
+        self.valid = np.flatnonzero(self.m)
 
     def target(self, times):
         y = np.zeros(self.T, np.float32)
@@ -79,10 +90,14 @@ class Clip:
         return y
 
     def crop(self, n):
-        s = random.randint(0, max(0, self.T - n))
+        if self.spans and len(self.valid):
+            c = int(random.choice(self.valid))           # a crop centred on labelled audio
+            s = min(max(0, c - n // 2), max(0, self.T - n))
+        else:
+            s = random.randint(0, max(0, self.T - n))
         x = np.asarray(self.x[s:s + n])
-        yb, yd = self.yb[s:s + n], self.yd[s:s + n]
-        return x, yb, yd
+        m = self.m[s:s + n]
+        return x, self.yb[s:s + n], self.yd[s:s + n], np.stack([m, m * self.has_downs], -1)
 
 
 def shift(y, d):
@@ -121,9 +136,12 @@ def evaluate(model, clips, dev):
         x = torch.from_numpy(np.asarray(c.x)).unsqueeze(0).to(dev)
         a = torch.sigmoid(model(x))[0].cpu().numpy()
         for j, (lst, ref) in enumerate(((fb, c.beats), (fd, c.downs))):
+            if ref is None:
+                continue
             # undo the lookahead delay: output frame t refers to frame t - LOOKAHEAD
             est = [(t - LOOKAHEAD) / FPS + c.off for t in peaks(a[:, j])]
-            r = [t for t in ref if t >= 5]; e = [t for t in est if t >= 5]
+            inside = (lambda t: any(a <= t < b for a, b in c.spans)) if c.spans else (lambda t: True)
+            r = [t for t in ref if t >= 5 and inside(t)]; e = [t for t in est if t >= 5 and inside(t)]
             if r:
                 lst.append(fmeasure(e, r))
     model.train()
@@ -162,9 +180,13 @@ def main():
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     index = json.load(open(f"{ML}/features/index.json"))
     clips = [Clip(e) for e in index if os.path.exists(e["file"])]
-    train = [c for c in clips if not c.test]
-    test = [c for c in clips if c.test]
-    print(f"device {dev}; {len(train)} train files, {len(test)} test clips", flush=True)
+    train = [c for c in clips if c.split == "train"]
+    val = [c for c in clips if c.split == "val"]
+    test = [c for c in clips if c.split == "test"]
+    sets = sorted({c.set for c in test})
+    print(f"device {dev}; {len(train)} train files, {len(val)} val clips, {len(test)} test clips", flush=True)
+    # Sample datasets in proportion to labelled duration, so long Harmonix songs count fully.
+    wts = [float(c.m.sum()) for c in train]
 
     model = BeatNet(c=args.channels).to(dev)
     print(f"parameters: {sum(p.numel() for p in model.parameters())}", flush=True)
@@ -178,23 +200,28 @@ def main():
     for ep in range(args.epochs):
         t0, losses = time.time(), []
         for _ in range(args.steps):
-            xs, yb, yd = zip(*(random.choice(train).crop(args.crop) for _ in range(args.batch)))
+            xs, yb, yd, ms = zip(*(c.crop(args.crop) for c in random.choices(train, weights=wts, k=args.batch)))
             n = min(len(a) for a in xs)
             x = torch.from_numpy(np.stack([a[:n] for a in xs])).to(dev)
             y = torch.stack([torch.from_numpy(np.stack([a[:n] for a in yb])),
                              torch.from_numpy(np.stack([a[:n] for a in yd]))], -1).to(dev)
-            y = shift(y, LOOKAHEAD)
+            m = torch.from_numpy(np.stack([a[:n] for a in ms])).to(dev)
+            y, m = shift(y, LOOKAHEAD), shift(m, LOOKAHEAD)
             logits = model(x)
-            w = 1 + (pos_w - 1) * (y > 0)
-            loss = F.binary_cross_entropy_with_logits(logits, y, weight=w)
+            w = (1 + (pos_w - 1) * (y > 0)) * m
+            loss = F.binary_cross_entropy_with_logits(logits, y, weight=w, reduction="sum") / m.sum().clamp(min=1)
             opt.zero_grad(); loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step(); sched.step()
             losses.append(loss.item())
-        fb, fd = evaluate(model, test, dev)
-        msg = f"epoch {ep + 1:3d}/{args.epochs}  loss {np.mean(losses):.4f}  test beat F {fb:.3f}  downbeat F {fd:.3f}  ({time.time() - t0:.0f}s)"
-        if fb > best:
-            best = fb
+        fb, fd = evaluate(model, val, dev)
+        msg = f"epoch {ep + 1:3d}/{args.epochs}  loss {np.mean(losses):.4f}  val beat F {fb:.3f}  downbeat F {fd:.3f}"
+        if (ep + 1) % 5 == 0 or ep + 1 == args.epochs:
+            msg += "  | test " + "  ".join(f"{s} {evaluate(model, [c for c in test if c.set == s], dev)[0]:.3f}" for s in sets)
+        msg += f"  ({time.time() - t0:.0f}s)"
+        score = fb + 0.5 * fd          # downbeats matter for bar-level visuals
+        if score > best:
+            best = score
             export(model, args.out, args.channels)
             torch.save(model.state_dict(), args.out + ".pt")
             msg += "  * saved"

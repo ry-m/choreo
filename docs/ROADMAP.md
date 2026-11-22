@@ -162,6 +162,30 @@ Learned beat/downbeat detector (v1), PyTorch for training only; inference is our
 - Note: the checkpoint was selected on the held-out split, so those numbers are slightly optimistic. Next
   time, use a separate validation split.
 
+**Harmonix data (v2 model).** 158 Harmonix Set songs recorded silently from Spotify overnight (~10 h,
+`tools/ml/record_harmonix.sh`). `tools/ml/harmonix.py align` maps annotations onto each recording (offset
+within ±1 s, or offset + time scale for differently-timed masters such as Dynamite at 128 vs 120 BPM) and
+drops 10 s windows that clearly contradict the fit: 129 songs, 7.4 h of verified beat labels. Splits are now
+train / val / test; the model is picked on val (`tools/ml/split.json`).
+- **Downbeats aren't usable yet**: the recording starts a variable 0–1 s into the song, so a beat grid shifted
+  by whole beats fits equally well. Only 3/129 bar positions were unambiguous; Harmonix downbeats are masked in
+  training. `choreo-live-eval --record` now saves Spotify's start position next to each WAV, so future
+  recordings can be placed in absolute time.
+- Results (held-out; full tracker F / network peak-pick F):
+
+  | | GTZAN | Ballroom | Harmonix (26) |
+  |---|---|---|---|
+  | v1 full tracker | 0.814 | 0.831 | 0.936 |
+  | v2 full tracker | 0.813 | 0.832 | 0.939 |
+  | v1 network only | 0.841 | 0.903 | 0.917 |
+  | v2 network only | 0.843 | 0.902 | 0.926 |
+
+  Tempo, exact / half-double: Harmonix 158 songs 75.8/94.2% → 76.0/94.3%; Spotify set 83.5/94.1% → 84.3/94.9%.
+  (The Harmonix test set is biased toward songs v1 already handles: alignment uses v1's activation.)
+- **Finding: the network is no longer the bottleneck, the tracker is.** Peak-picking the activation beats the
+  full tracker by 3–7 points of F. Next: rework the tempo/phase stage on top of the activation (e.g. a
+  causal bar-pointer / particle filter over tempo × phase × bar position, using the downbeat output too).
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 

@@ -173,6 +173,9 @@ int main(int argc, char** argv) {
             trackSeconds = std::clamp(ms / 1000.0 - 1.0, 20.0, 600.0);
         }
         if (!analyzer) analyzer = std::make_unique<Analyzer>(cap->sampleRate());
+        // Song position (s) at the start of the recording, so labels can be placed in absolute
+        // time (the tap starts a variable few hundred ms after playback). Saved as a sidecar.
+        double startPos = std::atof(osascript("tell application \"Spotify\" to player position").c_str());
 
         const double t0 = analyzer->state().time;
         long samples = 0, present = 0, exact = 0, rel = 0, flips = 0;
@@ -205,7 +208,13 @@ int main(int argc, char** argv) {
             }
         }
         cap->stop();
-        if (!recordDir.empty() && !gStop) writeWav(recordDir + "/" + safeName + ".wav", recording, cap->sampleRate());
+        if (!recordDir.empty() && !gStop) {
+            writeWav(recordDir + "/" + safeName + ".wav", recording, cap->sampleRate());
+            if (std::FILE* j = std::fopen((recordDir + "/" + safeName + ".json").c_str(), "w")) {
+                std::fprintf(j, "{\"uri\": \"%s\", \"start_position\": %.3f}\n", t.uri.c_str(), startPos);
+                std::fclose(j);
+            }
+        }
 
         double presentPct = samples ? 100.0 * present / samples : 0;
         double correctPct = present ? 100.0 * exact / present : 0;

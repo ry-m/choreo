@@ -10,7 +10,8 @@ standard metrics (as in mir_eval / MIREX), skipping the first 5 s like the liter
   offbeat  share of Choreo's beats that sit near the half-beat points (locked half a beat out)
   offset   median (Choreo - annotation) for matched beats, ms (+ = Choreo late)
 
-Usage: eval_beats.py DATASET [ENV=VALUE ...]   (DATASET: gtzan | ballroom | all)
+Usage: eval_beats.py DATASET [ENV=VALUE ...]   (DATASET: gtzan | ballroom | harmonix | all)
+       harmonix = Spotify recordings aligned by tools/ml/harmonix.py, scored inside verified spans
        V=1 for per-clip rows, LIMIT=n to use the first n clips, GENRE=pop to filter GTZAN,
        SPLIT=test to score only clips held out from training the learned detector.
 Datasets are expected in $CHOREO_DATA (default ~/.cache/choreo/datasets), see load_* below.
@@ -56,6 +57,14 @@ def load_ballroom():
         if name in audio:
             items.append((name, audio[name], b))
     return items
+
+
+def load_harmonix():
+    import json
+    p = os.path.join(os.environ.get("CHOREO_ML", os.path.expanduser("~/.cache/choreo/ml")), "harmonix_aligned.json")
+    if not os.path.exists(p):
+        return []
+    return [(d["name"], d["wav"], (d["beats"], d["spans"])) for d in json.load(open(p))]
 
 
 def trim(x):
@@ -119,8 +128,13 @@ def analyse(item, env):
             p = line.split()
             if len(p) == 2:
                 est.append(float(p[0]))
-    ref = trim(read_beats(ann))
-    est = trim(est)
+    if isinstance(ann, tuple):              # (beats, spans): score only inside verified spans
+        beats, spans = ann
+        inside = lambda t: any(a + 0.5 <= t < b - 0.5 for a, b in spans)
+        ref, est = [t for t in trim(beats) if inside(t)], [t for t in trim(est) if inside(t)]
+    else:
+        ref = trim(read_beats(ann))
+        est = trim(est)
     if len(ref) < 4:
         return None
     f = f_measure(est, ref)
@@ -145,7 +159,7 @@ def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     env = dict(os.environ)
     env.update(kv.split("=", 1) for kv in sys.argv[2:])
-    sets = {"gtzan": load_gtzan, "ballroom": load_ballroom}
+    sets = {"gtzan": load_gtzan, "ballroom": load_ballroom, "harmonix": load_harmonix}
     for ds in (sets if which == "all" else [which]):
         items = sets[ds]()
         if os.environ.get("SPLIT") in ("test", "train"):
