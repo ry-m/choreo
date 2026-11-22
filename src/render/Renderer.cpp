@@ -113,7 +113,14 @@ void Renderer::render(const MusicState& m, float dt) {
     twist_ += (0.15f + 1.2f * m.snare) * dt;
     if (m.beatCount != lastBeat_) {
         lastBeat_ = m.beatCount;
-        if (m.beatCount % 16 == 0) hue_ += 0.25f;   // shift palette every 4 bars
+        // Shift the palette every 4 bars, on a real downbeat (bar tracker). Without bar
+        // information (no beat model: beatInBar never leaves 0), count 16 beats instead.
+        if (m.beatInBar != 0) barsKnown_ = true;
+        if (barsKnown_) {
+            if (m.beatInBar == 0 && ++bars_ % 4 == 0) hue_ += 0.25f;
+        } else if (m.beatCount % 16 == 0) {
+            hue_ += 0.25f;
+        }
         flash_ = 1.f;
     }
     hue_ += 0.01f * dt;

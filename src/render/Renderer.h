@@ -54,7 +54,8 @@ private:
 
     // Motion integrators: visuals accumulate music-driven velocity so they never jump.
     float time_ = 0, travel_ = 0, twist_ = 0, hue_ = 0, flash_ = 0;
-    int lastBeat_ = 0;
+    int lastBeat_ = 0, bars_ = 0;
+    bool barsKnown_ = false;
     bool calibration_ = false;
 };
 
