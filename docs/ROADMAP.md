@@ -186,6 +186,35 @@ train / val / test; the model is picked on val (`tools/ml/split.json`).
   full tracker by 3–7 points of F. Next: rework the tempo/phase stage on top of the activation (e.g. a
   causal bar-pointer / particle filter over tempo × phase × bar position, using the downbeat output too).
 
+**Bar-pointer tracker** (`src/analysis/BarTracker.{h,cpp}`, default when a model is loaded;
+`CHOREO_TRACKER=old` for the previous path). Online HMM filtering over meter (3/4, 4/4) x beat in bar x
+beat period (60–200 BPM) x position, ~32k states, on the network's beat + downbeat activations at 100 fps.
+Tempo changes only at beat boundaries (stiffness λ=100). Output: most likely state, projected to the hop
+time; beat presence still comes from pulse clarity. New `MusicState` fields: `beatInBar`, `beatsPerBar`,
+`barPhase`, `downbeat`, `barConfidence`. Design choices, all measured (tuned on the val split):
+- Fixed ±3-frame beat region at every tempo, centred on the beat. madmom's τ/16 region favoured slow
+  tempos with our few-frame-wide peaks (tango at 62 instead of 130) and placed beats ~20 ms early.
+- Non-beat likelihood (1 − act)/7; downbeat weight 0.5; observation temperature 0.5 (a hypothesis
+  survives a weak beat).
+- Miss floor 0.05 on the beat-region likelihood: an unheard beat in a half-time section costs little, so
+  the metrical level holds (Black Ops 2 49% → 88% exact, Animals 43% → 100%). 0.1+ drifts to double tempo.
+- Tried and dropped: output smoothing / hysteresis (worse at every setting), a per-beat tempo prior
+  (no effect), continuity-only level hold (locks the intro's level), folding into a preferred range
+  (`CHOREO_LEVEL`, off: trades annotated-level accuracy for web-BPM conventions), loudness-weighted level
+  votes (intros out-vote drops).
+
+  | Held-out test | GTZAN F | Ballroom F | Harmonix F | GTZAN dbF | Ballroom dbF |
+  |---|---|---|---|---|---|
+  | Old tracker | 0.813 | 0.832 | 0.939 | – | – |
+  | Network peak-pick | 0.843 | 0.902 | 0.926 | 0.53 | 0.63 |
+  | **Bar tracker** | **0.857** | **0.905** | 0.939 | **0.565** | **0.756** |
+
+  Tempo exact / half-double: Harmonix 158 songs 76.0/94.3% → **81.1/93.3%** (expert annotations); Spotify
+  set 84.3/94.9% → 81.0/94.9% (web BPMs, which often double half-time hip-hop/EDM); Black Ops 2 100 → 88%.
+  Song change (30 joined pairs): re-lock 4.6 → 3.6 s median. CPU ≈ 0.25% of a core.
+- Next: downbeats from Harmonix (re-record with start positions, then train the downbeat output on them);
+  the visuals can now use bars (`barPhase`, `downbeat`).
+
 Known failures (run 2): Opus (arpeggio intro, 3:2), Hey Ya! and GoGo! (4:3), and an Innerbloom regression
 (7 flips on a slow-building deep house intro). Lock time is still ~10 s on some tracks.
 

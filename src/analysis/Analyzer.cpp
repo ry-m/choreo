@@ -73,6 +73,23 @@ bool Analyzer::loadBeatModel(const std::string& path) {
     // centre lags the analyser's frame centre a little; read it this far in the past.
     nnLagSec_ = net_.lookahead() / MelFeatures::kFps + 0.012;
     if (nnW_ < 0) nnW_ = 0.9f; // mostly the network, a little raw onset signal
+    const char* tr = std::getenv("CHOREO_TRACKER");
+    if (!tr || std::string(tr) != "old") {
+        BarTracker::Params bp;
+        if (const char* e = std::getenv("CHOREO_BT"))
+            std::sscanf(e, "%f,%f,%f,%f,%d", &bp.transitionLambda, &bp.obsLambda, &bp.downW, &bp.floor, &bp.regionHalf);
+        if (const char* e = std::getenv("CHOREO_BTOFF")) barOffsetSec_ = std::atof(e);
+        if (const char* e = std::getenv("CHOREO_BTTEMP")) bp.temperature = float(std::atof(e));
+        if (const char* e = std::getenv("CHOREO_BTMISS")) bp.missFloor = float(std::atof(e));
+        if (const char* e = std::getenv("CHOREO_BTPRIOR")) std::sscanf(e, "%f,%f", &bp.priorCenter, &bp.priorOctaves);
+        if (const char* e = std::getenv("CHOREO_LEVEL")) std::sscanf(e, "%f,%f,%f,%d", &levelLo_, &levelHi_, &levelFoldSec_, &levelCont_);
+        if (const char* e = std::getenv("CHOREO_METERS")) {
+            int a = 4, b = 0;
+            bp.nMeters = std::sscanf(e, "%d,%d", &a, &b);
+            bp.meters[0] = a; bp.meters[1] = b;
+        }
+        bar_ = std::make_unique<BarTracker>(bp);
+    }
     return true;
 }
 
@@ -101,6 +118,12 @@ void Analyzer::process(const float* samples, size_t n) {
                     nnBeat_[idx % kNnHistory] = a[0];
                     nnDown_[idx % kNnHistory] = a[1];
                     nnFrames_ = idx + 1;
+                    if (bar_) {
+                        barEst_ = bar_->push(a[0], a[1]);
+                        // Frame idx describes audio centred at idx/fps + centreOffset.
+                        double tk = idx / MelFeatures::kFps + features_->centreOffset();
+                        barLastBeat_ = tk - barEst_.beatPos / MelFeatures::kFps + barOffsetSec_;
+                    }
                 }
             });
         }
@@ -251,7 +274,8 @@ void Analyzer::analyzeHop() {
     }
 
     if (hopIndex_ % kTempoEvery == 0 && validHops_ > long(warmupSec_ * fps_)) updateTempo();
-    updateBeatPhase();
+    if (bar_) updateFromBarTracker();
+    else updateBeatPhase();
 
     // --- Timbre novelty (song-change detection) -----------------------------------
     // Short (~1 s) vs long (~6 s) averages of log band energies. A new song changes the whole
@@ -337,7 +361,13 @@ MusicState Analyzer::stateAt(double t) const {
     double beats = s.beatPhase + dt * s.bpm / 60.0;
     int whole = int(std::floor(beats));
     s.beatPhase = float(beats - whole);
+    if (whole > 0 && s.beatsPerBar > 0) {
+        s.beatInBar = (s.beatInBar + whole) % s.beatsPerBar;
+    }
+    s.barPhase = (s.beatInBar + s.beatPhase) / std::max(1, s.beatsPerBar);
+    s.downbeat = false;
     if (s.beatPresent && whole > 0) {
+        s.downbeat = s.beatInBar == 0 && whole == 1;
         s.beatCount += whole;
         s.beat = true;
         s.beatPulse = float(std::exp(-(s.beatPhase * 60.0 / s.bpm) / 0.18));
@@ -361,7 +391,84 @@ void Analyzer::softReset() {
     if (recordEvents) changeTimes.push_back(state_.time);
 }
 
+void Analyzer::updateFromBarTracker() {
+    // Tempo, phase and bar position come from the tracker's most likely state, projected from
+    // its newest frame to this hop's time, at the reported metrical level. Beat presence still
+    // comes from pulse clarity.
+    state_.beat = state_.downbeat = false;
+    if (!barEst_.valid) return;
+    const float mapBpm = barEst_.bpm;
+    const double mapBeats = (state_.time - barLastBeat_) * mapBpm / 60.0;
+    const double mapWhole = std::floor(mapBeats);
+    const float mapPhase = float(mapBeats - mapWhole);
+    const int B = barEst_.beatsPerBar;
+    const int mapInBar = int(((barEst_.beatInBar + long(mapWhole)) % B + B) % B);
+
+    // --- Metrical level ---
+    const float dt = float(1.0 / fps_);
+    if (!state_.beatPresent || prevMapBpm_ <= 0) {
+        levelPendingSec_ = 0;
+    } else if (levelCont_ && std::fabs(mapBpm / prevMapBpm_ - 1.f) > 0.04f) {
+        // The tracker jumped. If it jumped to a related level, absorb it so the output stays put.
+        const float out = levelMult_ * prevMapBpm_;
+        for (float m : {0.5f, 1.f, 2.f})
+            if (std::fabs(m * mapBpm / out - 1.f) < 0.04f) { levelMult_ = m; break; }
+    }
+    prevMapBpm_ = mapBpm;
+    const float outBpm0 = levelMult_ * mapBpm;
+    const bool tooFast = outBpm0 > levelHi_ && levelMult_ > 0.5f, tooSlow = outBpm0 < levelLo_ && levelMult_ < 2.f;
+    if (tooFast || tooSlow) {
+        levelPendingSec_ += dt;
+        if (levelPendingSec_ > levelFoldSec_ || !state_.beatPresent) { levelMult_ *= tooFast ? 0.5f : 2.f; levelPendingSec_ = 0; }
+    } else {
+        levelPendingSec_ = 0;
+    }
+    const float bpm = levelMult_ * mapBpm;
+
+    // --- Phase and bar position at the reported level ---
+    float phase;
+    int inBar, beats = B;
+    if (levelMult_ > 1.5f) {            // two output beats per tracker beat
+        phase = float(2.0 * mapPhase - std::floor(2.0 * mapPhase));
+        inBar = (2 * mapInBar + (mapPhase >= 0.5f)) % B;
+    } else if (levelMult_ < 0.75f) {    // every other tracker beat (beats 1 and 3 of its bar)
+        phase = ((mapInBar % 2) + mapPhase) / 2.f;
+        inBar = (mapInBar / 2) % std::max(1, B / 2);
+        beats = std::max(1, B / 2);
+    } else {
+        phase = mapPhase;
+        inBar = mapInBar;
+    }
+    state_.bpm = bpm;
+    periodHops_ = float(60.0 * fps_ / bpm);
+    if (phase < prevPhase_ - 0.5f && state_.beatPresent && hopIndex_ - lastBeatHop_ >= long(0.5 * periodHops_)) {
+        state_.beat = true;
+        state_.downbeat = inBar == 0;
+        ++state_.beatCount;
+        lastBeatHop_ = hopIndex_;
+        if (recordEvents) {
+            double t = state_.time - phase * 60.0 / bpm;
+            beatTimes.push_back(t);
+            beatBpms.push_back(bpm);
+            if (inBar == 0) downbeatTimes.push_back(t);
+        }
+    }
+    prevPhase_ = phase;
+    phase_ = phase;
+    state_.beatPhase = phase;
+    state_.beatsPerBar = beats;
+    state_.beatInBar = inBar;
+    state_.barPhase = (inBar + phase) / beats;
+    state_.barConfidence = barEst_.barConfidence;
+    static const bool dbg = std::getenv("CHOREO_BTDEBUG") != nullptr;
+    if (dbg && hopIndex_ % 4 == 0)
+        std::fprintf(stderr, "t %.2f bpm %.1f map %.1f pos %.0f/%.0f phase %.2f bar %d/%d conf %.2f present %d\n", state_.time, bpm, mapBpm,
+                     barEst_.beatPos, barEst_.period, phase, inBar, beats, barEst_.barConfidence, int(state_.beatPresent));
+}
+
 void Analyzer::resetRhythm() {
+    if (bar_) bar_->reset();
+    levelMult_ = 1.f; prevMapBpm_ = 0; levelPendingSec_ = 0;
     std::fill(odf_.begin(), odf_.end(), 0.f);
     std::fill(phaseOdf_.begin(), phaseOdf_.end(), 0.f);
     std::fill(cs_.begin(), cs_.end(), 0.f);

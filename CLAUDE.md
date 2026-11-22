@@ -13,8 +13,9 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are MSL compiled at runtime.
 
 ## Layout
-- `src/analysis/` — `Analyzer` (ODF, tempo ACF, metrical lock, phase/PLL, cumulative beat score;
-  many `CHOREO_*` env tuning hooks), `Features` (mel features, shared with training), `BeatNet`
+- `src/analysis/` — `BarTracker` (HMM bar-pointer filter: tempo/phase/bar from the network; default),
+  `Analyzer` (onsets, pulse clarity / beat presence, song-change resets, old ACF+PLL tracker behind
+  `CHOREO_TRACKER=old`; many `CHOREO_*` env tuning hooks, e.g. `CHOREO_BT*`), `Features` (mel features, shared with training), `BeatNet`
   (streaming TCN inference), `MusicState.h` (what visuals consume).
 - `src/audio/` — capture (system / per-app tap / mic), clock pairs for A/V sync.
 - `src/app/`, `src/render/`, `shaders/` — app, renderer, visuals.
@@ -25,11 +26,13 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
 
 ## Evaluation (use these; don't hand-tune by ear)
 - Beat F/CMLt/AMLt on held-out clips: `SPLIT=test .venv/bin/python tools/eval_beats.py all`
-  (gtzan, ballroom, harmonix). Current: full tracker 0.813 / 0.832 / 0.939; network peak-pick
-  0.843 / 0.902 / 0.926 — the tracker, not the network, is the gap.
+  (gtzan, ballroom, harmonix; also downbeat F). Current bar tracker: 0.857 / 0.905 / 0.939, downbeat
+  0.565 / 0.756. Tune on `SPLIT=val`, report `SPLIT=test`.
 - Tempo on Spotify recordings: `tools/eval_offline.py "ENV=..."` (80 songs, `~/.cache/choreo/rec`,
-  refs in `tests/reference/spotify*.csv`); song changes: `tools/eval_transitions.py`.
-- Harmonix tempo: 158 recordings in `~/.cache/choreo/harmonix_rec`, refs `tests/reference/harmonix_spotify.csv`.
+  refs in `tests/reference/spotify*.csv`; 81.0% exact, 94.9% half/double; also Black Ops 2 and unit
+  tests); song changes: `tools/eval_transitions.py`. Web BPM refs often double half-time songs.
+- Harmonix tempo: 158 recordings in `~/.cache/choreo/harmonix_rec`, refs `tests/reference/harmonix_spotify.csv`
+  (expert annotations; 81.1% exact, 93.3% half/double).
 - Override the model with `CHOREO_MODEL=path` (`none` disables). Report before/after tables.
 
 ## Data (never commit audio, features or datasets)

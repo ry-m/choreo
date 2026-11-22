@@ -105,6 +105,8 @@ int main(int argc, char** argv) {
     if (printBeats) {
         std::printf("#beats\n");
         for (size_t i = 0; i < a.beatTimes.size(); ++i) std::printf("%.4f %.2f\n", a.beatTimes[i], a.beatBpms[i]);
+        std::printf("#downbeats\n");
+        for (double t : a.downbeatTimes) std::printf("%.4f\n", t);
     }
     if (printKicks) { std::printf("#kicks\n"); for (double t : a.kickTimes) std::printf("%.4f\n", t); }
     if (printOnsets) for (double t : a.onsetTimes) std::printf("%.4f\n", t);

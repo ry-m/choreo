@@ -1,4 +1,5 @@
 #pragma once
+#include "analysis/BarTracker.h"
 #include "analysis/BeatNet.h"
 #include "analysis/FFT.h"
 #include "analysis/Features.h"
@@ -42,7 +43,7 @@ public:
 
     // Offline instrumentation.
     bool recordEvents = false;
-    std::vector<double> beatTimes, onsetTimes, kickTimes, changeTimes;
+    std::vector<double> beatTimes, onsetTimes, kickTimes, changeTimes, downbeatTimes;
     std::vector<float> beatBpms;      // tempo at each recorded beat
 
 private:
@@ -128,6 +129,21 @@ private:
     float eventThresh_ = 0.4f, eventGain_ = 0.f; // peak-based phase correction (gain 0 = off)
     float actPrev_ = 0, actPrev2_ = 0;
     float nnAt(const std::vector<float>& ring, double t) const;
+
+    // Bar-pointer tracker on the network activations (replaces ACF tempo + phase search + PLL
+    // for tempo/phase/bars when a model is loaded; CHOREO_TRACKER=old selects the old path).
+    std::unique_ptr<BarTracker> bar_;
+    BarTracker::Estimate barEst_;
+    double barLastBeat_ = -1e9;       // time (s) of the most recent beat per the tracker
+    double barOffsetSec_ = 0;         // timing correction applied to tracker beats
+    // Reported metrical level: output tempo = levelMult_ x tracker tempo (0.5, 1 or 2). It keeps
+    // the reported tempo continuous when the tracker's evidence slides to half/double (e.g. a
+    // half-time breakdown) and folds tempos outside the preferred range [lo, hi] into it.
+    float levelMult_ = 1.f, prevMapBpm_ = 0, levelPendingSec_ = 0;
+    float levelLo_ = 0.f, levelHi_ = 1e9f, levelFoldSec_ = 2.f; // folding off by default: it trades annotated-level accuracy for web-BPM conventions
+    int levelCont_ = 0;
+    float prevPhase_ = 0;
+    void updateFromBarTracker();
 
     MusicState state_;
     std::vector<MusicState> history_;  // ring of recent per-hop states (~5 s)

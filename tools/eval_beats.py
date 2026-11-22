@@ -25,6 +25,15 @@ BIN = os.path.join(ROOT, "build", "choreo-analyze")
 SKIP = 5.0
 
 
+def read_downbeats(path):
+    out = []
+    for line in open(path, errors="ignore"):
+        p = line.replace(",", " ").split()
+        if len(p) > 1 and p[1].split(".")[0] == "1":
+            out.append(float(p[0]))
+    return sorted(out)
+
+
 def read_beats(path):
     out = []
     for line in open(path, errors="ignore"):
@@ -119,22 +128,26 @@ def variations(ref):
 def analyse(item, env):
     name, audio, ann = item
     out = subprocess.run([BIN, audio, "--beats"], env=env, capture_output=True, text=True).stdout
-    est, mode = [], None
+    est, dest, mode = [], [], None
     for line in out.splitlines():
-        if line.startswith("#beats"):
-            mode = "b"
+        if line.startswith("#"):
+            mode = line[1:].strip()
             continue
-        if mode == "b":
-            p = line.split()
-            if len(p) == 2:
-                est.append(float(p[0]))
+        p = line.split()
+        if mode == "beats" and len(p) == 2:
+            est.append(float(p[0]))
+        elif mode == "downbeats" and len(p) == 1:
+            dest.append(float(p[0]))
+    dref = None
     if isinstance(ann, tuple):              # (beats, spans): score only inside verified spans
-        beats, spans = ann
+        beats, spans = ann                  # (Harmonix bar positions are unverified: no downbeat score)
         inside = lambda t: any(a + 0.5 <= t < b - 0.5 for a, b in spans)
         ref, est = [t for t in trim(beats) if inside(t)], [t for t in trim(est) if inside(t)]
     else:
         ref = trim(read_beats(ann))
         est = trim(est)
+        dref = trim(read_downbeats(ann)) or None
+    dF = f_measure(trim(dest), dref) if dref else None
     if len(ref) < 4:
         return None
     f = f_measure(est, ref)
@@ -151,7 +164,7 @@ def analyse(item, env):
             off += 1
         elif abs(e - dr) <= 0.07:
             offsets.append((e - dr) * 1000)
-    return dict(name=name, F=f, CMLt=cml, AMLt=aml, offbeat=off / len(est) if est else 0,
+    return dict(name=name, F=f, dF=dF, CMLt=cml, AMLt=aml, offbeat=off / len(est) if est else 0,
                 offset=st.median(offsets) if offsets else float("nan"), n=len(est))
 
 
@@ -162,7 +175,7 @@ def main():
     sets = {"gtzan": load_gtzan, "ballroom": load_ballroom, "harmonix": load_harmonix}
     for ds in (sets if which == "all" else [which]):
         items = sets[ds]()
-        if os.environ.get("SPLIT") in ("test", "train"):
+        if os.environ.get("SPLIT") in ("test", "train", "val"):
             split = set(__import__("json").load(open(os.path.join(ROOT, "tools", "ml", "split.json")))[os.environ["SPLIT"]])
             items = [i for i in items if i[0] in split]
         if os.environ.get("LIMIT"):
@@ -175,7 +188,8 @@ def main():
         offs = [r["offset"] for r in rows if r["offset"] == r["offset"]]
         print(f"{ds:9s} n={len(rows):4d}  F {st.mean(r['F'] for r in rows):.3f}  CMLt {st.mean(r['CMLt'] for r in rows):.3f}  "
               f"AMLt {st.mean(r['AMLt'] for r in rows):.3f}  off-beat {100 * st.mean(r['offbeat'] for r in rows):4.1f}%  "
-              f"clips mostly off-beat {sum(r['offbeat'] > 0.5 for r in rows):3d}  median offset {st.median(offs):+.1f} ms")
+              f"clips mostly off-beat {sum(r['offbeat'] > 0.5 for r in rows):3d}  median offset {st.median(offs):+.1f} ms"
+              + (f"  downbeat F {st.mean(d):.3f}" if (d := [r['dF'] for r in rows if r['dF'] is not None]) else ""))
         if os.environ.get("V"):
             for r in sorted(rows, key=lambda r: r["AMLt"])[:15]:
                 print(f"   {r['name']:28s} F {r['F']:.2f} CMLt {r['CMLt']:.2f} AMLt {r['AMLt']:.2f} off-beat {100 * r['offbeat']:3.0f}% offset {r['offset']:+.0f}")

@@ -14,6 +14,7 @@ find_package(SDL3 REQUIRED CONFIG)
 add_library(choreo_analysis STATIC
   src/analysis/FFT.cpp
   src/analysis/Analyzer.cpp
+  src/analysis/BarTracker.cpp
   src/analysis/Features.cpp
   src/analysis/BeatNet.cpp
 )

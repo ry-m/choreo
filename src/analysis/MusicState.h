@@ -18,6 +18,12 @@ struct MusicState {
     int   beatCount = 0;
     bool  beat = false;        // a beat fired this hop
     float beatPulse = 0;
+    // Bars (from the bar tracker; with no learned model these stay at their defaults)
+    int   beatInBar = 0;       // 0 = downbeat (first beat of the bar)
+    int   beatsPerBar = 4;     // meter: 3 or 4
+    float barPhase = 0;        // 0..1 position within the bar
+    bool  downbeat = false;    // a beat fired this hop and it starts a bar
+    float barConfidence = 0;   // 0..1: how sure the tracker is about the bar position
 
     // Instrument-ish onsets
     float kick = 0, snare = 0, hat = 0;
