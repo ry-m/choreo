@@ -7,6 +7,7 @@
 //   sectionLiftConfirmed             -> hard switch one beat later (still under the lift's flash) if not already cut
 //   sectionChange / sectionConfirmed -> smaller transition: next palette in the family, new camera angle, variant
 //   barPhase / downbeat / beatsSinceSection -> phrase motion, 4-bar accents, build-up tension
+//   no cut for 24+ bars                -> cut on a plain section change or the next 8-bar phrase start (32 bars max)
 // Pure CPU code with no GPU dependency, so the offline renderer and tests can drive it.
 #include "analysis/MusicState.h"
 #include "render/Scenes.h"
@@ -82,7 +83,6 @@ private:
     // Event bookkeeping (in beats, via MusicState::beatCount).
     int lastBeat_ = 0, lastCutBeat_ = -1000, liftBeat_ = -1000, changeBeat_ = -1000, barsSinceCut_ = 0;
     int nLift_ = 0, nChange_ = 0, nConf_ = 0, nLiftConf_ = 0;
-    bool sectionModel_ = false;
 
     // Continuous state.
     float time_ = 0, sceneTime_ = 0;

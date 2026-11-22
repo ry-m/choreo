@@ -46,7 +46,7 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
   ±1 beat). Current: change F 0.46 on the beat / 0.52 confirmed; lift 0.35 / 0.40.
 
 - Visuals: check with `choreo-render` (look at the PNGs), not a live demo. Cuts: `tools/eval_cuts.py test`
-  (immediate cuts on downbeats, confirmed one beat later; 53% at an annotated boundary). GPU: `choreo-render
+  (immediate cuts on downbeats, confirmed one beat later; 49% at an annotated boundary). GPU: `choreo-render
   song.wav --bench --size 3024x1964 --scale 0.49` (all scenes ≤ ~7.5 ms median on M5).
 
 ## Data (never commit audio, features or datasets)

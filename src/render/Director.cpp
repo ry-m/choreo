@@ -16,8 +16,11 @@ float decay(float v, float tau, float dt) { return v * std::exp(-dt / std::max(t
 float clamp01(float x) { return std::min(1.f, std::max(0.f, x)); }
 
 constexpr int kMinBeatsBetweenCuts = 8;  // the detector itself fires >= 8 beats apart per head
-constexpr int kMaxBarsWithoutCut = 48;   // after this long, a plain section change may cut too
-constexpr int kFallbackCutBars = 32;     // no section model: cut every 32 bars on a downbeat
+// Quiet stretches: the section detector can stay silent for minutes (or there is no section model).
+// After kLongBars without a cut, a plain section change cuts, else the next 8-bar phrase start
+// (counted from the last section event) does; by kMaxBars any downbeat does.
+constexpr int kLongBars = 24;
+constexpr int kMaxBars = 32;
 } // namespace
 
 Director::Director() {
@@ -119,7 +122,6 @@ void Director::update(const MusicState& m, float dt) {
     mid_ = follow(mid_, m.mid, 0.03f, 0.25f, dt);
     treble_ = follow(treble_, m.treble, 0.02f, 0.2f, dt);
     bright_ = follow(bright_, m.brightness, 1.0f, 1.0f, dt);
-    if (m.sectionProb > 0 || m.liftProb > 0) sectionModel_ = true;
 
     // ---- Beats and bars ------------------------------------------------------------------
     const bool newBeat = m.beatCount > lastBeat_;
@@ -159,16 +161,20 @@ void Director::update(const MusicState& m, float dt) {
         cut(m, liftBeat_ == n - 1 ? "lift confirmed" : "lift confirmed (unannounced)");
     }
     if (change && !lift && lastCutBeat_ != n) {
-        if (barsSinceCut_ >= kMaxBarsWithoutCut && canCut) cut(m, "change after a long section");
+        if (barsSinceCut_ >= kLongBars && canCut) cut(m, "change after a long section");
         else smallChange(m, "change");
     }
     if (conf && !liftConf && changeBeat_ != n - 1 && lastCutBeat_ != n - 1 && lastCutBeat_ != n) {
-        if (barsSinceCut_ >= kMaxBarsWithoutCut && canCut) cut(m, "confirmed after a long section");
+        if (barsSinceCut_ >= kLongBars && canCut) cut(m, "confirmed after a long section");
         else smallChange(m, "change confirmed");
     }
-    // No section model (or it never fires): keep the show moving on phrase boundaries.
-    if (downbeat && !sectionModel_ && m.beatPresent && barsSinceCut_ >= kFallbackCutBars && canCut)
-        cut(m, "fallback 32 bars");
+    // Nothing from the detector for a long time: keep the show moving on a phrase boundary.
+    if (downbeat && m.beatPresent && canCut && lastCutBeat_ != n) {
+        const int bpb0 = std::max(1, m.beatsPerBar);
+        const bool phraseStart = m.beatsSinceSection > 0 && m.beatsSinceSection % (8 * bpb0) == 0;
+        if (barsSinceCut_ >= kMaxBars) cut(m, "quiet: 40 bars");
+        else if (barsSinceCut_ >= kLongBars && phraseStart) cut(m, "quiet: 8-bar phrase");
+    }
 
     // Phrase accents: every 4 bars from the section start, a small camera move on the downbeat.
     const int bpb = std::max(1, m.beatsPerBar);

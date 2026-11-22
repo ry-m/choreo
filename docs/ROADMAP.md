@@ -315,8 +315,11 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
     last one ~10 ms hop and 60 fps frames skipped some. Lift → hit (flash ~0.55 beat, burst, shatter, FOV
     punch); `liftProb ≥ 0.9` (`CHOREO_CUT_PROB`) → immediate cut on the downbeat; lift confirmed → cut one
     beat later, under the decaying flash; plain change/confirm → next palette (blended over ~⅓ beat), new
-    camera preset (eased), geometry variant; after 48 bars without a cut a plain change cuts too; no
-    section model → cut every 32 bars. 4-bar phrase accents, build tension over 8-bar phrases + energy rise.
+    camera preset (eased), geometry variant. Quiet stretches (the detector can stay silent for minutes): after
+    24 bars without a cut, a plain section change cuts, else the next 8-bar phrase start (from the last
+    section event); by 32 bars any downbeat cuts (also covers running without a section model). Test,
+    longest stretch on one scene: worst 195 s → 83 s, median 75 s → 60 s; cuts at a boundary 53% → 49%
+    (16/24 bars: 50 s median but 46%). 4-bar phrase accents, build tension over 8-bar phrases + energy rise.
     Trails are off for 0.15 s after a cut so the old scene never smears into the new one.
   - Threshold choice: on test, lifts with `liftProb ≥ 0.9` hit an annotated lift 49% of the time vs 29% for
     all lifts (val: 0.9 → 42% of cuts at a boundary vs 27% at 0.8).
@@ -325,9 +328,9 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
     ACES, saturation, vignette, grain + dither). 12 passes.
   - Offline: `choreo-render song.wav --cuts` (contact sheet per cut: frame before, cut, +1, +2 beats),
     `--at T,.. [--sheet]`, `--events`, `--bench`. `tools/eval_cuts.py [val|test]` scores cuts.
-  - Test (27 Harmonix recordings, 98 min): 1.2 cuts/min, 1.9 smaller changes/min, 1.8 lift hits/min; all
-    immediate cuts on a downbeat and all 80 confirmed cuts exactly one beat after theirs; 53% of cuts at an
-    annotated boundary (±1 beat), 36% at a lift; 38% of annotated lifts get a cut. Cuts reach the screen
+  - Test (27 Harmonix recordings, 98 min): 1.4 cuts/min, 1.8 smaller changes/min, 1.8 lift hits/min; every
+    cut on a downbeat (confirmed lift cuts exactly one beat after theirs); 49% of cuts at an annotated
+    boundary (±1 beat), 31% at a lift; 39% of annotated lifts get a cut. Cuts reach the screen
     +39 ms (median) after the analyser's beat time: that's the beat detector's causal latency (beat events
     are announced ~30–45 ms after the beat; the beat *phase* is predicted and on time). The A/V calibration
     (`[`/`]`) applies to all of it.
