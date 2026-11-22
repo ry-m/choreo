@@ -100,6 +100,79 @@ def offset_scores(a, b, off, dts):
     return np.array(out)
 
 
+MEL = os.environ.get("CHOREO_HX_MEL", f"{DATA}/harmonix_mel/melspecs")
+MEL_HOP = 1024 / 22050          # Harmonix melspec frame period (s)
+
+
+def slaney_mel_fb(sr=22050, n_fft=2048, n_mels=80, fmax=11025.0):
+    """librosa.filters.mel(sr, n_fft, n_mels, fmin=0, fmax, htk=False, norm='slaney')."""
+    f_sp, min_log_hz, min_log_mel, logstep = 200 / 3, 1000.0, 15.0, np.log(6.4) / 27
+    hz2mel = lambda f: np.where(f < min_log_hz, f / f_sp, min_log_mel + np.log(np.maximum(f, 1e-9) / min_log_hz) / logstep)
+    mel2hz = lambda m: np.where(m < min_log_mel, m * f_sp, min_log_hz * np.exp(logstep * (m - min_log_mel)))
+    hz = mel2hz(np.linspace(hz2mel(np.array(0.0)), hz2mel(np.array(fmax)), n_mels + 2))
+    freqs = np.linspace(0, sr / 2, n_fft // 2 + 1)
+    fb = np.zeros((n_mels, len(freqs)))
+    for i in range(n_mels):
+        lo, c, hi = hz[i], hz[i + 1], hz[i + 2]
+        fb[i] = np.maximum(0, np.minimum((freqs - lo) / (c - lo), (hi - freqs) / (hi - c))) * 2 / (hi - lo)
+    return fb
+
+
+def recording_mel(wav):
+    """Mel power spectrogram of a recording on the Harmonix melspec grid (44.1 kHz: n_fft 4096, hop
+    2048 gives the same 10.8 Hz bins and 46.4 ms frames as 22.05 kHz / 2048 / 1024)."""
+    import wave
+    w = wave.open(wav)
+    sr, n = w.getframerate(), w.getnframes()
+    x = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32) / 32768
+    k = round(sr / 22050)
+    n_fft, hop = 2048 * k, 1024 * k
+    x = np.pad(x, n_fft // 2, mode="reflect")
+    frames = np.lib.stride_tricks.sliding_window_view(x, n_fft)[::hop]
+    spec = np.abs(np.fft.rfft(frames * np.hanning(n_fft + 1)[:-1], axis=1))[:, :1025] ** 2
+    return (spec @ slaney_mel_fb().T).T            # [80, T]
+
+
+def _norm_logmel(m):
+    l = np.log(m + 1e-6)
+    l = l - l.mean(1, keepdims=True)
+    return l / (l.std(1, keepdims=True) + 1e-6)
+
+
+def mel_fit(fid, wav):
+    """(scale, offset_s, score): recording time = scale * annotation time + offset, from the
+    cross-correlation of the recording's log-mel spectrogram with Harmonix's own. Whole-beat
+    shifts land on different notes, so unlike a beat-grid fit this has a single clear peak."""
+    p = f"{MEL}/{fid}-mel.npy"
+    if not os.path.exists(p):
+        return None
+    A = _norm_logmel(np.load(p))                  # annotated audio
+    Bm = _norm_logmel(recording_mel(wav))         # our recording
+    best = (1.0, 0.0, -1.0)
+    for s in [1.0] + [v for v in np.arange(0.92, 1.0801, 0.0025) if abs(v - 1) > 1e-6]:
+        if s != 1.0:
+            # resample the annotated spectrogram onto the recording's time axis at this scale
+            t = np.arange(int(A.shape[1] * s)) / s
+            i0 = np.clip(t.astype(int), 0, A.shape[1] - 2); f = t - i0
+            As = A[:, i0] * (1 - f) + A[:, i0 + 1] * f
+        else:
+            As = A
+        L = As.shape[1] + Bm.shape[1]
+        n = 1 << int(np.ceil(np.log2(L)))
+        c = np.fft.irfft(np.conj(np.fft.rfft(As, n, axis=1)) * np.fft.rfft(Bm, n, axis=1), n, axis=1).sum(0)
+        lags = np.r_[np.arange(0, Bm.shape[1]), np.arange(-As.shape[1] + 1, 0)]
+        vals = np.r_[c[:Bm.shape[1]], c[n - As.shape[1] + 1:]]
+        ok = np.abs(lags) < 15 / MEL_HOP
+        k = int(np.argmax(np.where(ok, vals, -np.inf)))
+        overlap = min(As.shape[1], Bm.shape[1]) * 80
+        score = float(vals[k] / overlap)
+        if score > best[2]:
+            best = (float(s), float(lags[k] * MEL_HOP), score)
+        if s == 1.0 and score > 0.6:
+            break                                   # same-speed match found; skip the scale search
+    return best
+
+
 def resolve_bar(a, ad, b, d, off, scale, dt, period):
     """The recording starts a variable few hundred ms into the song (the tap is created after
     Spotify reports playing), so offsets of up to ~1 s are real. A beat grid shifted by whole
@@ -156,12 +229,44 @@ def cmd_align(rec_dir):
         beats, downs, segs = annotations(fid)
         a, ad, off = activation(os.path.join(rec_dir, wav))
         b0 = np.array(beats)
-        scale, best, bestS, sc = fit(a, b0, off)
-        if bestS < 0.2 or bestS < 1.8 * np.median(sc):
-            rejected.append((fid, f"no clear offset {bestS:.2f}"))
-            continue
-        best, down_ok = resolve_bar(a, ad, b0, np.array(downs), off, scale, best,
-                                    float(np.median(np.diff(b0))) * scale)
+        mf = mel_fit(fid, os.path.join(rec_dir, wav))
+        if mf and mf[2] >= 0.35:
+            # Spectrogram match: absolute offset to one frame (46 ms); refine on the beat activation.
+            scale, coarse, melS = mf
+            # The spectrogram rules out whole-beat shifts, so the beat fit may search up to 40% of a beat.
+            w = min(0.2, 0.4 * float(np.median(np.diff(b0))) * scale)
+            fine = np.arange(-w, w + 1e-9, 0.005)
+            sc = offset_scores(a, b0 * scale, off, coarse + fine)
+            best, bestS, down_ok = float(coarse + fine[sc.argmax()]), float(sc.max()), True
+            # Clock drift: recordings can run ~0.1% fast or slow (playback vs device clock), which
+            # walks the grid off the beats over a few minutes. Fit a line through per-window offsets.
+            for _ in range(2):
+                ts, ds, ws = [], [], []
+                for w0 in np.arange(0, len(a) / 100 - 5, 10.0):
+                    bw = b0 * scale + best; bw = bw[(bw >= w0) & (bw < w0 + 10)]
+                    if len(bw) < 4: continue
+                    ls = offset_scores(a, bw, off, dts)
+                    if ls.max() >= 0.3 and ls.max() >= 1.6 * np.median(ls):
+                        ts.append(w0 + 5); ds.append(dts[ls.argmax()]); ws.append(ls.max())
+                if len(ts) < 4: break
+                ts, ds, ws = map(np.array, (ts, ds, ws))
+                keep = np.ones(len(ts), bool)
+                for _ in range(3):
+                    c1, c0 = np.polyfit(ts[keep], ds[keep], 1, w=ws[keep])
+                    keep = np.abs(ds - (c0 + c1 * ts)) < 0.04
+                    if keep.sum() < 4: break
+                if keep.sum() < 4 or abs(c1) > 0.01: break
+                best, scale = best + c0 - c1 * best, scale * (1 + c1)   # t' = t + c0 + c1*t
+            if bestS < 0.1:
+                rejected.append((fid, f"mel match {melS:.2f} but beats don't fit ({bestS:.2f})"))
+                continue
+        else:
+            scale, best, bestS, sc = fit(a, b0, off)
+            if bestS < 0.2 or bestS < 1.8 * np.median(sc):
+                rejected.append((fid, f"no clear offset {bestS:.2f} (mel {mf[2] if mf else 'n/a'})"))
+                continue
+            best, down_ok = resolve_bar(a, ad, b0, np.array(downs), off, scale, best,
+                                        float(np.median(np.diff(b0))) * scale)
         tf = lambda t, s=scale, o=best: t * s + o   # annotation time -> recording time
         b = tf(b0)
         best = 0.0                               # b is already in recording time below
@@ -189,7 +294,7 @@ def cmd_align(rec_dir):
             else:
                 merged.append([s0, e0])
         out.append(dict(name=fid, wav=os.path.join(rec_dir, wav), offset=float(tf(0.0)), scale=float(scale),
-                        score=bestS, spans=merged, dropped=bad, downbeats_ok=down_ok, beats=[float(tf(t)) for t in beats],
+                        score=bestS, spans=merged, dropped=bad, downbeats_ok=down_ok, mel=mf[2] if mf else None, beats=[float(tf(t)) for t in beats],
                         downbeats=[float(tf(t)) for t in downs], segments=[(float(tf(t)), l) for t, l in segs],
                         genre=meta[fid]["Genre"]))
     os.makedirs(ML, exist_ok=True)

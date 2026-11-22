@@ -73,7 +73,8 @@ def load_harmonix():
     p = os.path.join(os.environ.get("CHOREO_ML", os.path.expanduser("~/.cache/choreo/ml")), "harmonix_aligned.json")
     if not os.path.exists(p):
         return []
-    return [(d["name"], d["wav"], (d["beats"], d["spans"])) for d in json.load(open(p))]
+    return [(d["name"], d["wav"], (d["beats"], d["spans"], d["downbeats"] if d.get("downbeats_ok") else None))
+            for d in json.load(open(p))]
 
 
 def trim(x):
@@ -140,9 +141,11 @@ def analyse(item, env):
             dest.append(float(p[0]))
     dref = None
     if isinstance(ann, tuple):              # (beats, spans): score only inside verified spans
-        beats, spans = ann                  # (Harmonix bar positions are unverified: no downbeat score)
+        beats, spans, downs = ann           # downbeats only where the alignment verified the bar position
         inside = lambda t: any(a + 0.5 <= t < b - 0.5 for a, b in spans)
         ref, est = [t for t in trim(beats) if inside(t)], [t for t in trim(est) if inside(t)]
+        dref = [t for t in trim(downs) if inside(t)] if downs else None
+        dest = [t for t in dest if inside(t)]
     else:
         ref = trim(read_beats(ann))
         est = trim(est)

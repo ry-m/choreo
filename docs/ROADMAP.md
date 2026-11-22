@@ -246,6 +246,30 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
   reporting "a new section starts at this downbeat" plus its kind and intensity (drop vs subtle change).
   It has to fire on the downbeat itself, so it needs anticipation (builds, risers, snare rolls, filter
   sweeps, the silence before a drop). Evaluated by hit rate at ±1 beat, false cuts per minute and latency.
+- **Status (section detector v0, `tools/ml/sections.py`, PyTorch only so far).**
+  - Exact Harmonix alignment: our recordings are matched to the official Harmonix mel spectrograms
+    (`harmonix.py` `mel_fit`, plus a clock-drift line fit: recordings run up to ~0.1% fast/slow). The
+    beat-grid-only alignment had most songs out by whole beats (86/123 moved, many by 3–5 s); downbeat labels
+    now verified (network downbeat activation on labelled downbeats ×2.7 vs ×1.06). 143/158 songs, 8.5 h,
+    139 with downbeats. This also gave beat network v3 (Harmonix downbeats in training): Harmonix downbeat
+    F 0.741 → 0.835, Ballroom 0.756 → 0.781, beat F equal or better.
+  - Model: causal GRU per beat on beat-synchronous 16-band envelopes (relative to a running average),
+    bar position, tempo and repetition distances (vs 1/2/4/8 bars back). Heads: *next* (a section starts
+    on the next beat: decided at the downbeat) and *conf* (it started on this beat: 1 beat late), each for
+    any boundary and for lifts (into a chorus/drop, or +0.5 level jump). Cuts fire only on downbeats.
+  - Trained on 787 Harmonix songs straight from the melspecs (envelopes are source-independent: ~0.9
+    per-band correlation with Choreo's own features on the same audio); tested on 27 unseen recorded songs
+    through Choreo's features and live tracker (±1 beat):
+
+    | head | P | R | F | false cuts/min |
+    |---|---|---|---|---|
+    | next, any | 0.31 | 0.41 | 0.35 | 2.3 |
+    | next, lift | 0.19 | 0.28 | 0.23 | 1.3 |
+    | conf, any | 0.48 | 0.49 | 0.49 | 1.3 |
+    | conf, lift | 0.30 | 0.36 | 0.33 | 1.0 |
+
+  - Not yet good enough for hard cuts. Next: measure what look-ahead buys (heads 2/4/8 beats late), a
+    richer model (bar-level attention over the last 16 bars), cleaner lift labels, then the C++ port.
 - Masking live-audio latency (combine all three):
   1. **Predict**: the beat grid already says when the next downbeat is; an anticipation score from the
      build (risers, snare rolls, filter sweeps, bass removal, pre-drop silence) commits the cut to it.
