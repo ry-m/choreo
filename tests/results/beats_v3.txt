@@ -1,0 +1,3 @@
+gtzan     n= 163  F 0.856  CMLt 0.755  AMLt 0.827  off-beat  9.0%  clips mostly off-beat   7  median offset -2.8 ms  downbeat F 0.574
+ballroom  n=  98  F 0.915  CMLt 0.798  AMLt 0.881  off-beat  6.6%  clips mostly off-beat   2  median offset +5.4 ms  downbeat F 0.781
+harmonix  n=  27  F 0.948  CMLt 0.858  AMLt 0.925  off-beat  5.4%  clips mostly off-beat   0  median offset +4.6 ms  downbeat F 0.835

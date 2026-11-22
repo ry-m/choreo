@@ -9,11 +9,13 @@ milestone history and all past results: `docs/ROADMAP.md` (read the relevant sec
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/test_analysis                                   # analyser unit tests
 ./build/test_beatnet models/beatnet.bin models/beatnet_testvec.bin   # C++ == PyTorch inference
+./build/test_sections models/sections.bin models/sections_testvec.bin # same for the section detector
 ```
 Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are MSL compiled at runtime.
 
 ## Layout
 - `src/analysis/` — `BarTracker` (HMM bar-pointer filter: tempo/phase/bar from the network; default),
+  `Sections` (section-change detector, per-beat GRU → `sectionChange`/`sectionLift`/...),
   `Analyzer` (onsets, pulse clarity / beat presence, song-change resets, old ACF+PLL tracker behind
   `CHOREO_TRACKER=old`; many `CHOREO_*` env tuning hooks, e.g. `CHOREO_BT*`), `Features` (mel features, shared with training), `BeatNet`
   (streaming TCN inference), `MusicState.h` (what visuals consume).
@@ -35,7 +37,9 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
   (expert annotations; 81.1% exact, 93.3% half/double).
 - Override the model with `CHOREO_MODEL=path` (`none` disables). Report before/after tables.
 - Section changes: `.venv/bin/python tools/ml/sections.py train` (787 Harmonix songs from melspecs),
-  `... sections.py eval test` (27 recorded songs, Choreo features + live tracker, ±1 beat).
+  then `... sections.py export` (→ `models/sections.bin`, checked by `./build/test_sections models/sections.bin
+  models/sections_testvec.bin`), `... sections.py eval-cpp test` (27 recorded songs through the C++ analyser,
+  ±1 beat). Current: change F 0.46 on the beat / 0.52 confirmed; lift 0.35 / 0.40.
 
 ## Data (never commit audio, features or datasets)
 `~/.cache/choreo/`: `datasets/{gtzan,ballroom,harmonix}`, `rec/` (Spotify set), `harmonix_rec/`,

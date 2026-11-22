@@ -3,6 +3,7 @@
 #include "analysis/BeatNet.h"
 #include "analysis/FFT.h"
 #include "analysis/Features.h"
+#include "analysis/Sections.h"
 #include "analysis/MusicState.h"
 #include <deque>
 #include <memory>
@@ -28,6 +29,9 @@ public:
     // activation drives tempo and phase instead of the hand-built onset function.
     bool loadBeatModel(const std::string& path);
     bool hasBeatModel() const { return net_.loaded(); }
+    // Section-change detector (models/sections.bin); needs the beat model (shares its features).
+    bool loadSectionModel(const std::string& path);
+    bool hasSectionModel() const { return sections_.loaded(); }
 
     // Process any number of samples; may run zero or more hops.
     void process(const float* samples, size_t n);
@@ -45,6 +49,8 @@ public:
     bool recordEvents = false;
     std::vector<double> beatTimes, onsetTimes, kickTimes, changeTimes, downbeatTimes;
     std::vector<float> beatBpms;      // tempo at each recorded beat
+    struct SectionEvent { double time; int kind; float prob; }; // kind: 0 change, 1 lift, 2 confirmed, 3 lift confirmed
+    std::vector<SectionEvent> sectionEvents;
 
 private:
     void analyzeHop();
@@ -144,6 +150,14 @@ private:
     int levelCont_ = 0;
     float prevPhase_ = 0;
     void updateFromBarTracker();
+
+    // Section-change detector, stepped once per tracked beat.
+    SectionDetector sections_;
+    int prevBeatInBar_ = 0;
+    long lastSection_ = -1000, lastLift_ = -1000, lastConf_ = -1000, lastLiftConf_ = -1000;
+    bool secAnyBeat_ = false;         // fire on any beat (else only on downbeats)
+    int secRefractory_ = 8;           // beats between events of the same kind
+    void updateSections(double beatTime, int inBar);
 
     MusicState state_;
     std::vector<MusicState> history_;  // ring of recent per-hop states (~5 s)

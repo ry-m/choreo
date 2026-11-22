@@ -246,30 +246,44 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
   reporting "a new section starts at this downbeat" plus its kind and intensity (drop vs subtle change).
   It has to fire on the downbeat itself, so it needs anticipation (builds, risers, snare rolls, filter
   sweeps, the silence before a drop). Evaluated by hit rate at ±1 beat, false cuts per minute and latency.
-- **Status (section detector v0, `tools/ml/sections.py`, PyTorch only so far).**
-  - Exact Harmonix alignment: our recordings are matched to the official Harmonix mel spectrograms
-    (`harmonix.py` `mel_fit`, plus a clock-drift line fit: recordings run up to ~0.1% fast/slow). The
-    beat-grid-only alignment had most songs out by whole beats (86/123 moved, many by 3–5 s); downbeat labels
-    now verified (network downbeat activation on labelled downbeats ×2.7 vs ×1.06). 143/158 songs, 8.5 h,
-    139 with downbeats. This also gave beat network v3 (Harmonix downbeats in training): Harmonix downbeat
-    F 0.741 → 0.835, Ballroom 0.756 → 0.781, beat F equal or better.
-  - Model: causal GRU per beat on beat-synchronous 16-band envelopes (relative to a running average),
-    bar position, tempo and repetition distances (vs 1/2/4/8 bars back). Heads: *next* (a section starts
-    on the next beat: decided at the downbeat) and *conf* (it started on this beat: 1 beat late), each for
-    any boundary and for lifts (into a chorus/drop, or +0.5 level jump). Cuts fire only on downbeats.
-  - Trained on 787 Harmonix songs straight from the melspecs (envelopes are source-independent: ~0.9
-    per-band correlation with Choreo's own features on the same audio); tested on 27 unseen recorded songs
-    through Choreo's features and live tracker (±1 beat):
+- **Status: section detector v1 is in the app** (`src/analysis/Sections.{h,cpp}`, trained by
+  `tools/ml/sections.py`, weights `models/sections.bin`; `test_sections` checks C++ == PyTorch to 5e-7).
+  - Exact Harmonix alignment: recordings are matched to the official Harmonix mel spectrograms
+    (`harmonix.py` `mel_fit` + a clock-drift line fit; recordings run up to ~0.1% fast/slow). The earlier
+    beat-grid-only alignment had most songs out by whole beats; downbeat labels are now verified (network
+    downbeat activation on labelled downbeats ×2.7 vs ×1.06 before). 143/158 songs, 8.5 h, 139 with
+    downbeats. Beat network v3 trains on them: Harmonix downbeat F 0.741 → 0.835, Ballroom 0.756 → 0.781.
+  - Model: causal GRU (96 units, dropout) stepped once per tracked beat on beat-synchronous 16-band
+    envelopes (relative to a running average, so Harmonix melspecs and Choreo's own features look alike:
+    ~0.9 per-band correlation on the same audio), bar position, tempo and repetition distances (vs
+    1/2/4/8 bars back). Heads for decision delays −1 (this beat starts a section: decided on the beat),
+    0 (the previous beat did), 2, 4, 8 beats; each for any boundary and for lifts (into a chorus/drop, or a
+    +0.5 level jump). Trained on 787 Harmonix songs from melspecs with tracker-like perturbations
+    (beat jitter, bar position shifted in 30% of copies). Events fire only on downbeats, ≥ 8 beats apart.
+  - `MusicState`: `sectionChange`, `sectionLift` (on the beat), `sectionConfirmed`,
+    `sectionLiftConfirmed` (one beat later), `sectionProb`, `liftProb`, `beatsSinceSection`.
+  - Test, 27 unseen recorded songs, C++ pipeline end to end (`sections.py eval-cpp test`), ±1 beat:
 
-    | head | P | R | F | false cuts/min |
+    | event | P | R | F | false cuts/min |
     |---|---|---|---|---|
-    | next, any | 0.31 | 0.41 | 0.35 | 2.3 |
-    | next, lift | 0.19 | 0.28 | 0.23 | 1.3 |
-    | conf, any | 0.48 | 0.49 | 0.49 | 1.3 |
-    | conf, lift | 0.30 | 0.36 | 0.33 | 1.0 |
+    | change, on the beat | 0.44 | 0.47 | 0.46 | 1.45 |
+    | lift, on the beat | 0.31 | 0.42 | 0.35 | 1.06 |
+    | change confirmed (+1 beat) | 0.48 | 0.57 | 0.52 | 1.49 |
+    | lift confirmed (+1 beat) | 0.42 | 0.39 | 0.40 | 0.61 |
 
-  - Not yet good enough for hard cuts. Next: measure what look-ahead buys (heads 2/4/8 beats late), a
-    richer model (bar-level attention over the last 16 bars), cleaner lift labels, then the C++ port.
+  - What look-ahead buys (Python, same test): any-change F 0.45 (on the beat) → 0.53 (+1 beat) → 0.54
+    (+2) → 0.54 (+4) → 0.57 (+8); lifts 0.32 → 0.40 → 0.46 → 0.47 → 0.47. The big step is the first beat,
+    so strategy 2 (flash on the hit, swap underneath once confirmed) is the default; a look-ahead mode
+    would add only ~0.05 F for a playback delay of 1–4 s. Firing on any beat instead of downbeats: +0.01–0.04
+    F with more false cuts (19% of Harmonix boundaries are not on a downbeat).
+  - Visual contract (for the scene director): treat `sectionLift` as "maybe big moment now" (flash, burst,
+    camera kick: harmless if wrong); commit the scene/palette switch on `sectionLiftConfirmed` (or on
+    `sectionLift` when `liftProb` is very high); use `sectionChange`/`sectionConfirmed` for smaller
+    transitions; `beatsSinceSection` for build-ups and phrase-length behaviour.
+  - Next for accuracy: more training data with tracker beats (run the tracker over Harmonix-like audio),
+    richer context (attention over the last 16 bars), calibrated probabilities.
+- Song changes: on a detected hard cut the bar tracker's posterior is softened (`BarTracker::soften`,
+  0.99), restoring a 3.5 s median re-lock with net v3 (4.5 s without; 30 joined pairs).
 - Masking live-audio latency (combine all three):
   1. **Predict**: the beat grid already says when the next downbeat is; an anticipation score from the
      build (risers, snare rolls, filter sweeps, bass removal, pre-drop silence) commits the cut to it.

@@ -93,6 +93,51 @@ bool Analyzer::loadBeatModel(const std::string& path) {
     return true;
 }
 
+bool Analyzer::loadSectionModel(const std::string& path) {
+    if (!features_ || !sections_.load(path)) return false;
+    if (const char* e = std::getenv("CHOREO_SEC_ANYBEAT")) secAnyBeat_ = std::atoi(e) != 0;
+    return true;
+}
+
+void Analyzer::updateSections(double beatTime, int inBar) {
+    // Called on every emitted beat. Head layout: for each delay d, (any, lift); d = -1 says
+    // "this beat starts a section", d = 0 "the previous beat did".
+    state_.sectionChange = state_.sectionLift = state_.sectionConfirmed = state_.sectionLiftConfirmed = false;
+    ++state_.beatsSinceSection;
+    if (!sections_.loaded() || !sections_.onBeat(beatTime, prevBeatInBar_)) { prevBeatInBar_ = inBar; return; }
+    const auto& d = sections_.delays();
+    const auto& p = sections_.outputs();
+    const auto& thr = sections_.thresholds();
+    const long n = state_.beatCount;
+    auto fire = [&](int head, bool onBar, long& last) {
+        if (head < 0 || p[head] < thr[head] || (!secAnyBeat_ && !onBar) || n - last < secRefractory_) return false;
+        last = n;
+        return true;
+    };
+    for (size_t i = 0; i < d.size(); ++i) {
+        const int any = int(2 * i), lift = any + 1;
+        if (d[i] == -1) {
+            state_.sectionProb = p[any];
+            state_.liftProb = p[lift];
+            state_.sectionChange = fire(any, inBar == 0, lastSection_);
+            state_.sectionLift = fire(lift, inBar == 0, lastLift_);
+        } else if (d[i] == 0) {
+            state_.sectionConfirmed = fire(any, prevBeatInBar_ == 0, lastConf_);
+            state_.sectionLiftConfirmed = fire(lift, prevBeatInBar_ == 0, lastLiftConf_);
+        }
+    }
+    if (state_.sectionChange || state_.sectionLift) state_.beatsSinceSection = 0;
+    else if ((state_.sectionConfirmed || state_.sectionLiftConfirmed) && state_.beatsSinceSection > 1) state_.beatsSinceSection = 1;
+    if (recordEvents) {
+        const double prevBeat = beatTimes.size() >= 2 ? beatTimes[beatTimes.size() - 2] : beatTime;
+        if (state_.sectionChange) sectionEvents.push_back({beatTime, 0, state_.sectionProb});
+        if (state_.sectionLift) sectionEvents.push_back({beatTime, 1, state_.liftProb});
+        if (state_.sectionConfirmed) sectionEvents.push_back({prevBeat, 2, 0});
+        if (state_.sectionLiftConfirmed) sectionEvents.push_back({prevBeat, 3, 0});
+    }
+    prevBeatInBar_ = inBar;
+}
+
 // Activation at absolute time t (seconds), linearly interpolated from the 100 fps network output.
 float Analyzer::nnAt(const std::vector<float>& ring, double t) const {
     if (nnFrames_ == 0) return 0.f;
@@ -110,6 +155,8 @@ void Analyzer::process(const float* samples, size_t n) {
         size_t take = std::min(n, size_t(kHop) - inputFill_);
         if (features_ && net_.loaded()) {
             features_->process(samples, take, [&](const float* feat) {
+                if (sections_.loaded())
+                    sections_.pushFrame(feat, features_->framesProduced() / MelFeatures::kFps + features_->centreOffset());
                 float a[2];
                 net_.push(feat, a);
                 // This output describes the frame `lookahead` frames ago.
@@ -366,6 +413,7 @@ MusicState Analyzer::stateAt(double t) const {
     }
     s.barPhase = (s.beatInBar + s.beatPhase) / std::max(1, s.beatsPerBar);
     s.downbeat = false;
+    s.sectionChange = s.sectionLift = s.sectionConfirmed = s.sectionLiftConfirmed = false;
     if (s.beatPresent && whole > 0) {
         s.downbeat = s.beatInBar == 0 && whole == 1;
         s.beatCount += whole;
@@ -388,6 +436,8 @@ void Analyzer::softReset() {
     validHops_ = std::min<long>(validHops_, long(1.0 * fps_));
     lockedSec_ = 0;
     pendingSec_ = 0;
+    static const float soft = [] { const char* e = std::getenv("CHOREO_SOFTEN"); return e ? float(std::atof(e)) : 0.99f; }();
+    if (bar_ && soft > 0) bar_->soften(soft);
     if (recordEvents) changeTimes.push_back(state_.time);
 }
 
@@ -396,6 +446,7 @@ void Analyzer::updateFromBarTracker() {
     // its newest frame to this hop's time, at the reported metrical level. Beat presence still
     // comes from pulse clarity.
     state_.beat = state_.downbeat = false;
+    state_.sectionChange = state_.sectionLift = state_.sectionConfirmed = state_.sectionLiftConfirmed = false;
     if (!barEst_.valid) return;
     const float mapBpm = barEst_.bpm;
     const double mapBeats = (state_.time - barLastBeat_) * mapBpm / 60.0;
@@ -446,12 +497,13 @@ void Analyzer::updateFromBarTracker() {
         state_.downbeat = inBar == 0;
         ++state_.beatCount;
         lastBeatHop_ = hopIndex_;
+        const double tBeat = state_.time - phase * 60.0 / bpm;
         if (recordEvents) {
-            double t = state_.time - phase * 60.0 / bpm;
-            beatTimes.push_back(t);
+            beatTimes.push_back(tBeat);
             beatBpms.push_back(bpm);
-            if (inBar == 0) downbeatTimes.push_back(t);
+            if (inBar == 0) downbeatTimes.push_back(tBeat);
         }
+        updateSections(tBeat, inBar);
     }
     prevPhase_ = phase;
     phase_ = phase;
@@ -468,6 +520,8 @@ void Analyzer::updateFromBarTracker() {
 
 void Analyzer::resetRhythm() {
     if (bar_) bar_->reset();
+    sections_.reset();
+    state_.beatsSinceSection = 0;
     levelMult_ = 1.f; prevMapBpm_ = 0; levelPendingSec_ = 0;
     std::fill(odf_.begin(), odf_.end(), 0.f);
     std::fill(phaseOdf_.begin(), phaseOdf_.end(), 0.f);

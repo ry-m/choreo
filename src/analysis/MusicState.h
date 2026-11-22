@@ -25,6 +25,14 @@ struct MusicState {
     bool  downbeat = false;    // a beat fired this hop and it starts a bar
     float barConfidence = 0;   // 0..1: how sure the tracker is about the bar position
 
+    // Sections (from the section-change detector; all false/0 without its model)
+    bool  sectionChange = false;        // this beat starts a new section (decided now, on the beat)
+    bool  sectionLift = false;          // ...and it's a lift: chorus / drop (the big visual moment)
+    bool  sectionConfirmed = false;     // one beat later: the previous beat did start a section
+    bool  sectionLiftConfirmed = false; // ...and it was a lift
+    float sectionProb = 0, liftProb = 0;  // latest probabilities that this beat starts a section / lift
+    int   beatsSinceSection = 0;        // beats since the last announced or confirmed section start
+
     // Instrument-ish onsets
     float kick = 0, snare = 0, hat = 0;
     float onset = 0;           // overall onset strength (normalised)

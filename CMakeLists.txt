@@ -15,6 +15,7 @@ add_library(choreo_analysis STATIC
   src/analysis/FFT.cpp
   src/analysis/Analyzer.cpp
   src/analysis/BarTracker.cpp
+  src/analysis/Sections.cpp
   src/analysis/Features.cpp
   src/analysis/BeatNet.cpp
 )
@@ -65,3 +66,6 @@ add_test(NAME analysis COMMAND test_analysis)
 add_executable(test_beatnet tests/test_beatnet.cpp)
 target_link_libraries(test_beatnet PRIVATE choreo_analysis)
 add_test(NAME beatnet COMMAND test_beatnet ${CMAKE_SOURCE_DIR}/models/beatnet.bin ${CMAKE_SOURCE_DIR}/models/beatnet_testvec.bin)
+add_executable(test_sections tests/test_sections.cpp)
+target_link_libraries(test_sections PRIVATE choreo_analysis)
+add_test(NAME sections COMMAND test_sections ${CMAKE_SOURCE_DIR}/models/sections.bin ${CMAKE_SOURCE_DIR}/models/sections_testvec.bin)

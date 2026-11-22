@@ -29,8 +29,14 @@ REP_BARS = (1, 2, 4, 8)
 D_IN = D_BASE + 4 + 1 + len(REP_BARS) + 1  # EMA-relative levels, bar position, tempo, repetition
 LIFT_SCALE = 1.0
 LIFT_DELTA = 0.5           # level jump (log band energy, 8 s after vs before) that counts as a lift
-N_OUT = 4                   # next_any, next_lift, conf_any, conf_lift
+# Decision delays in beats: at beat i, head (d, kind) says "a section started at beat i - d".
+# d = -1 predicts the next beat (decided at the downbeat); d = 0 is one beat after it started; larger
+# d measures what look-ahead (delayed playback) would buy.
+DELAYS = tuple(int(v) for v in os.environ.get("CHOREO_SEC_DELAYS", "-1,0,2,4,8").split(","))
+HEADS = tuple(f"d{d}_{k}" for d in DELAYS for k in ("any", "lift"))
+N_OUT = len(HEADS)
 REFRACTORY = 8              # beats between fired cuts
+ANY_BEAT = bool(os.environ.get("CHOREO_SEC_ANYBEAT"))   # fire on any beat, not only downbeats
 SKIP_LABELS = {"end", "silence"}
 
 
@@ -75,12 +81,21 @@ def env_choreo(name, speed=1.0):
     """Band envelopes from Choreo's own 100 fps features (as the app would compute them),
     resampled to the common grid. Returns (E, t0): frame k is at t0 + k / ENV_FPS."""
     x, off = load_feats(name, speed)
-    mag = np.expm1(np.maximum(x[:, :64], 0))           # area-normalised band magnitude (x const)
+    return env_from_frames(x, off)
+
+
+def env_from_frames(x, off):
+    """Exactly what src/analysis/Sections.cpp computes live: band power from the 64 log-mel values,
+    a trailing 9-frame (90 ms, like Harmonix's 93 ms window) average, linear resampling onto the
+    ENV_FPS grid starting at the first frame, 16-band grouping, log."""
+    mag = np.expm1(np.maximum(x[:, :64], 0)).astype(np.float64)   # area-normalised band magnitude
     t = off + np.arange(len(x)) / FPS
-    tk = np.arange(t[0], t[-1], 1 / ENV_FPS)
-    # Harmonix frames use a 93 ms window; average Choreo's 100 fps power over the same span.
-    k9 = np.ones(9) / 9
-    P = np.stack([np.interp(tk, t, np.convolve(mag[:, b] ** 2, k9, mode="same")) for b in range(64)])
+    p = mag ** 2
+    c = np.cumsum(np.vstack([np.zeros((1, 64)), p]), 0)
+    n = np.minimum(np.arange(1, len(p) + 1), 9)
+    sm = (c[1:] - c[np.maximum(0, np.arange(1, len(p) + 1) - 9)]) / n[:, None]
+    tk = t[0] + np.arange(int(np.floor((t[-1] - t[0]) * ENV_FPS)) + 1) / ENV_FPS
+    P = np.stack([np.interp(tk, t, sm[:, b]) for b in range(64)])
     return envelopes_from_power(P, _htk_centres()), float(tk[0])
 
 
@@ -117,7 +132,8 @@ def beat_features(E, t0, beats, downs):
     onehot = np.eye(4, dtype=np.float32)[pos]
     ibi = np.diff(beats).astype(np.float32)
     tempo = np.log2(60 / np.maximum(ibi, 0.2) / 120)[:, None]
-    z = rel / (np.abs(rel).mean(0, keepdims=True) + 1e-3)
+    # Scale for the repetition distances: running mean of |rel| over the beats heard so far (causal).
+    z = rel / (np.cumsum(np.abs(rel), 0) / np.arange(1, len(rel) + 1)[:, None] + 1e-3)
     rep = np.zeros((len(r), len(REP_BARS) + 1), np.float32)
     for i in range(len(r)):
         for kk, nb in enumerate(REP_BARS):
@@ -158,16 +174,20 @@ def beat_labels(beats, bounds, tol=0.12):
     return y
 
 
+HIDDEN = int(os.environ.get("CHOREO_SEC_HIDDEN", "96"))
+
+
 class SectionNet(nn.Module):
-    def __init__(self, h=64):
+    def __init__(self, h=HIDDEN, drop=0.3):
         super().__init__()
         self.inp = nn.Linear(D_IN, h)
         self.gru = nn.GRU(h, h, batch_first=True)
         self.out = nn.Linear(h, N_OUT)
+        self.drop = nn.Dropout(drop)
 
     def forward(self, x):
-        y, _ = self.gru(torch.tanh(self.inp(x)))
-        return self.out(y)
+        y, _ = self.gru(self.drop(torch.tanh(self.inp(x))))
+        return self.out(self.drop(y))
 
 
 def recorded(split):
@@ -218,31 +238,45 @@ def envelopes(song, speed=1.0):
     return env_choreo(song["name"], speed)
 
 
-def example(song, speed=1.0):
+def example(song, speed=1.0, perturb=False, rnd=None):
+    """perturb: mimic the live tracker: ~10 ms beat jitter, and for some songs a bar position that's
+    off by 1-3 beats."""
     E, t0 = envelopes(song, speed)
     E1, t01 = envelopes(song) if speed != 1.0 else (E, t0)
     beats = [t / speed for t in song["beats"]]
     downs = [t / speed for t in song["downbeats"]]
+    if perturb:
+        beats = sorted(t + rnd.gauss(0, 0.01) for t in beats)
+        if rnd.random() < 0.3 and len(beats) > 8:
+            k = rnd.choice((1, 2, 3)); bi = {round(t, 3): i for i, t in enumerate(beats)}
+            idx = [int(np.abs(np.array(beats) - t).argmin()) for t in downs]
+            downs = [beats[min(len(beats) - 1, i + k)] for i in idx]
     inside = lambda t: any(a <= t * speed < b for a, b in song["spans"])
     f = beat_features(E, t0, beats, downs)
-    ys = []
-    for lift in (False, True):
-        yb = beat_labels(beats, [t / speed for t in boundary_times(song, lift, E1, t01)])
-        ys += [np.append(yb[1:len(f) + 1], 0)[:len(f)], yb[:len(f)]]
-    y = np.stack([ys[0], ys[2], ys[1], ys[3]], 1)           # next_any, next_lift, conf_any, conf_lift
+    yb = {lift: beat_labels(beats, [t / speed for t in boundary_times(song, lift, E1, t01)]) for lift in (False, True)}
+    cols = []
+    for d in DELAYS:
+        for lift in (False, True):
+            col = np.zeros(len(f), np.float32)
+            for i in range(len(f)):
+                j = i - d
+                if 0 <= j < len(yb[lift]): col[i] = yb[lift][j]
+            cols.append(col)
+    y = np.stack(cols, 1)
     m = np.array([inside(t) for t in beats[:len(f)]], np.float32)
     return f, y, m
 
 
-HEADS = ("next_any", "next_lift", "conf_any", "conf_lift")
 
 
 def fit(train_songs, epochs, log=None, seed=0):
     random.seed(seed); torch.manual_seed(seed)
     speeds = (0.9, 1.0, 1.1)
-    data = [example(s, sp) for s in train_songs for sp in speeds]
+    rnd = random.Random(seed)
+    data = [example(s, sp, pert, rnd) for s in train_songs for sp in speeds for pert in (False, True)]
     model = SectionNet()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs * len(data))
     for ep in range(epochs):
         random.shuffle(data)
         model.train(); losses = []
@@ -252,7 +286,7 @@ def fit(train_songs, epochs, log=None, seed=0):
             lg = model(x)
             w = (1 + 19 * yt) * mt
             loss = (F.binary_cross_entropy_with_logits(lg, yt, reduction="none") * w).sum() / w.sum().clamp(min=1)
-            opt.zero_grad(); loss.backward(); nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
+            opt.zero_grad(); loss.backward(); nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step(); sched.step()
             losses.append(loss.item())
         if log: log(ep, float(np.mean(losses)), model)
     return model
@@ -305,10 +339,10 @@ def predictions(model, items, live=True):
         inside = lambda t: any(a + 2 <= t < b - 2 for a, b in s["spans"])
         ev = {h: [] for h in HEADS}
         for i in range(len(f)):
-            if i + 1 < len(beats) and is_down(beats[i + 1]) and inside(beats[i + 1]):
-                ev["next_any"].append((beats[i + 1], p[i, 0])); ev["next_lift"].append((beats[i + 1], p[i, 1]))
-            if is_down(beats[i]) and inside(beats[i]):
-                ev["conf_any"].append((beats[i], p[i, 2])); ev["conf_lift"].append((beats[i], p[i, 3]))
+            for hi, h in enumerate(HEADS):
+                j = i - DELAYS[hi // 2]
+                if 0 <= j < len(beats) and (ANY_BEAT or is_down(beats[j])) and inside(beats[j]):
+                    ev[h].append((beats[j], p[i, hi]))
         refs = {False: [t for t in boundary_times(s) if inside(t)], True: [t for t in boundary_times(s, True, E, t0) if inside(t)]}
         out.append(dict(name=s["name"], ev=ev, refs=refs, ibi=float(np.median(np.diff(beats))),
                         dur=sum(b - a for a, b in s["spans"])))
@@ -344,6 +378,50 @@ def report(preds, tag, thrs=None):
         print(f"{tag:22s} {h:9s} thr {t:.2f}  P {P:.2f}  R {R:.2f}  F {Fm:.3f}  false cuts/min {fpm:.2f}")
 
 
+def bar_positions(beats, downs):
+    pos, dl, j = [], sorted(downs), -1
+    for i in range(len(beats)):
+        while j + 1 < len(dl) and dl[j + 1] <= beats[i] + 0.05:
+            j += 1
+        pos.append((sum(1 for t in beats[:i + 1] if t >= dl[j] - 0.05) - 1) % 4 if j >= 0 else i % 4)
+    return pos
+
+
+def export(model, thrs, path):
+    """Weights for src/analysis/Sections.cpp."""
+    sd = {k: v.detach().cpu().float().numpy() for k, v in model.state_dict().items()}
+    H = sd["inp.weight"].shape[0]
+    with open(path, "wb") as f:
+        np.array([0x53454354, 1, D_IN, H, N_OUT], np.int32).tofile(f)     # 'SECT'
+        np.array(DELAYS, np.int32).tofile(f)
+        np.array([thrs[h] for h in HEADS], np.float32).tofile(f)
+        for k in ("inp.weight", "inp.bias", "gru.weight_ih_l0", "gru.weight_hh_l0", "gru.bias_ih_l0", "gru.bias_hh_l0",
+                  "out.weight", "out.bias"):
+            sd[k].astype(np.float32).tofile(f)
+
+
+@torch.no_grad()
+def export_testvec(model, song, path, seconds=90):
+    """A recorded song's Choreo features (first `seconds`), its beats and bar positions, and the
+    per-beat inputs/outputs this Python implementation produces, for tests/test_sections.cpp."""
+    x, off = load_feats(song["name"])
+    x = x[: int(seconds * FPS)]
+    beats = [t for t in song["beats"] if t < off + len(x) / FPS - 0.5]
+    downs = [t for t in song["downbeats"] if t <= beats[-1]]
+    E, t0 = env_from_frames(x, off)
+    f = beat_features(E, t0, beats, downs)
+    p = torch.sigmoid(model(torch.from_numpy(f).unsqueeze(0)))[0].numpy()
+    pos = bar_positions(beats, downs)
+    with open(path, "wb") as fo:
+        np.array([len(x), x.shape[1]], np.int32).tofile(fo); np.array([off], np.float32).tofile(fo)
+        x.astype(np.float32).tofile(fo)
+        np.array([len(beats)], np.int32).tofile(fo); np.array(beats, np.float64).tofile(fo)
+        np.array(pos, np.int32).tofile(fo)
+        np.array([len(f), N_OUT], np.int32).tofile(fo)
+        p.astype(np.float32).tofile(fo); f.astype(np.float32).tofile(fo)
+    print(f"wrote {path}: {song['name']}, {len(f)} beats")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd"); ap.add_argument("split", nargs="?", default="test")
@@ -366,6 +444,34 @@ def main():
                 msg += " * saved"
             print(msg, flush=True)
         fit(tr, args.epochs, log)
+    elif args.cmd == "eval-cpp":
+        # End to end: the events choreo-analyze (the app's C++ analyser) emits, scored at +-1 beat.
+        names = {0: "change (on the beat)", 1: "lift (on the beat)", 2: "confirmed (+1 beat)", 3: "lift confirmed (+1 beat)"}
+        acc = {k: [0, 0, 0, 0.0] for k in names}
+        for song in recorded(args.split):
+            out = subprocess.run([os.path.join(ROOT, "build", "choreo-analyze"), song["wav"], "--beats"], capture_output=True, text=True).stdout
+            beats, ev, mode = [], {k: [] for k in names}, None
+            for line in out.splitlines():
+                if line.startswith("#"): mode = line[1:].strip(); continue
+                q = line.split()
+                if mode == "beats" and len(q) == 2: beats.append(float(q[0]))
+                elif mode == "sections" and len(q) == 4: ev[int(q[1])].append(float(q[0]))
+            if len(beats) < 40: continue
+            E, t0 = envelopes(song)
+            inside = lambda t: any(a + 2 <= t < b - 2 for a, b in song["spans"])
+            ibi = float(np.median(np.diff(beats))); dur = sum(b - a for a, b in song["spans"])
+            for k in names:
+                refs = [t for t in boundary_times(song, k in (1, 3), E, t0) if inside(t)]
+                h, ne, nr, d = score_events([t for t in ev[k] if inside(t)], refs, ibi, dur)
+                a = acc[k]; a[0] += h; a[1] += ne; a[2] += nr; a[3] += d
+        for k, (h, ne, nr, d) in acc.items():
+            P = h / ne if ne else 0; R = h / nr if nr else 0
+            print(f"{args.split} C++ {names[k]:26s} P {P:.2f}  R {R:.2f}  F {2 * P * R / (P + R) if P + R else 0:.3f}  false cuts/min {(ne - h) / (d / 60):.2f}")
+    elif args.cmd == "export":
+        model = SectionNet(); model.load_state_dict(torch.load(path)); model.eval()
+        thrs = json.load(open(path + ".thr.json"))
+        export(model, thrs, os.path.join(ROOT, "models", "sections.bin"))
+        export_testvec(model, recorded("test")[0], os.path.join(ROOT, "models", "sections_testvec.bin"))
     else:
         model = SectionNet(); model.load_state_dict(torch.load(path))
         thrs = json.load(open(path + ".thr.json"))

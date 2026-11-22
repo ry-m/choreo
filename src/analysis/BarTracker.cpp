@@ -49,6 +49,11 @@ void BarTracker::reset() {
     bpmSmooth_ = 0;
 }
 
+void BarTracker::soften(float w) {
+    const float u = 1.f / alpha_.size();
+    for (float& v : alpha_) v = (1.f - w) * v + w * u;
+}
+
 const BarTracker::Estimate& BarTracker::push(float beat, float down) {
     const float act = std::clamp(beat, 1e-4f, 1.f - 1e-4f);
     const float q = std::clamp(down / (beat + 1e-3f), 0.f, 1.f); // P(downbeat | beat), per the network

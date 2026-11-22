@@ -47,6 +47,9 @@ public:
     BarTracker() : BarTracker(Params()) {}
     explicit BarTracker(const Params& p);
     void reset();
+    // Blend the posterior toward uniform by w (0..1): after a probable song change, so the new
+    // song's tempo and phase can take over quickly without dropping the beat entirely.
+    void soften(float w);
     // Feed one frame of activations (beat, downbeat; 0..1). Returns the estimate after it.
     const Estimate& push(float beat, float down);
     const Estimate& estimate() const { return est_; }

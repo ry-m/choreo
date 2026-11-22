@@ -40,6 +40,9 @@ int main(int argc, char** argv) {
         const char* env = std::getenv("CHOREO_MODEL");
         std::string model = env ? env : (dir.empty() ? "." : dir) + "/../models/beatnet.bin";
         if (model != "none") a.loadBeatModel(model);
+        const char* senv = std::getenv("CHOREO_SECTIONS");
+        std::string smodel = senv ? senv : (dir.empty() ? "." : dir) + "/../models/sections.bin";
+        if (smodel != "none") a.loadSectionModel(smodel);
     }
     a.recordEvents = true;
     const size_t block = 512;
@@ -107,6 +110,8 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < a.beatTimes.size(); ++i) std::printf("%.4f %.2f\n", a.beatTimes[i], a.beatBpms[i]);
         std::printf("#downbeats\n");
         for (double t : a.downbeatTimes) std::printf("%.4f\n", t);
+        std::printf("#sections\n");   // time kind(0 change, 1 lift, 2 confirmed, 3 lift confirmed) prob
+        for (auto& e : a.sectionEvents) std::printf("%.4f %d %.3f x\n", e.time, e.kind, e.prob);
     }
     if (printKicks) { std::printf("#kicks\n"); for (double t : a.kickTimes) std::printf("%.4f\n", t); }
     if (printOnsets) for (double t : a.onsetTimes) std::printf("%.4f\n", t);
