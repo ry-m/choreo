@@ -246,6 +246,16 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
   reporting "a new section starts at this downbeat" plus its kind and intensity (drop vs subtle change).
   It has to fire on the downbeat itself, so it needs anticipation (builds, risers, snare rolls, filter
   sweeps, the silence before a drop). Evaluated by hit rate at ±1 beat, false cuts per minute and latency.
+- Masking live-audio latency (combine all three):
+  1. **Predict**: the beat grid already says when the next downbeat is; an anticipation score from the
+     build (risers, snare rolls, filter sweeps, bass removal, pre-drop silence) commits the cut to it.
+  2. **Hide a late detection under the hit**: an unannounced change still has a kick/onset on its downbeat,
+     detected within ~20 ms. Fire a big flash/white-out on the hit and swap the scene underneath it a few
+     frames later once confirmed; a false alarm costs only a flash, not a wrong cut.
+  3. **Look-ahead mode** (optional, per-app capture): capture the app muted at the source (as
+     `choreo-live-eval` does) and play it back from Choreo delayed by ~0.3–0.5 s. The analyser hears the
+     future, so drops, choruses and downbeats are known before the listener hears them. Costs a short lag
+     on play/skip. Plain system-audio capture stays real-time and relies on 1 and 2.
 - Build-up / drop / breakdown detection, plus riser/snare-roll detection
 - "Anticipation" signals: progress through a build (0→1) and time to the predicted drop
 
