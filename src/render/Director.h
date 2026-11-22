@@ -30,7 +30,15 @@ struct SceneUniforms {
     float fx[4];     // flash, burst age (s since the last hit; large = none), shatter, strobe
     float look[4];   // variant (eased), seed, hue drift, beat present (0/1)
     float pal[4][4]; // cosine palette a, b, c, d (xyz)
+    float hist[4];   // history ring: newest row index (0..kHistRows-1), rows per second, 0, 0
 };
+
+// Music history for spectrogram-style scenes: one row per 1/60 s in a kHistRows ring texture
+// (RGBA16F, kHistCols wide). Column b: R = spectrum band b, G = its peak-hold cap; B holds scalars by
+// column: 0 kick, 1 snare, 2 hat, 3 bass, 4 loudness, 5 beat pulse, 6 onset, 7 energy.
+constexpr int kHistRows = 256, kHistCols = MusicState::kSpectrumBands;
+constexpr float kHistRate = 60.f;
+struct HistoryRow { float px[kHistCols][4]; };
 
 // Post-processing controls for this frame.
 struct PostLook {
@@ -47,6 +55,9 @@ public:
     int scene() const { return scene_; }
     const SceneUniforms& uniforms() const { return u_; }
     const PostLook& post() const { return post_; }
+    // History rows added by the last update(), and the total written so far (ring index = count % kHistRows).
+    const std::vector<HistoryRow>& newRows() const { return newRows_; }
+    long rowsWritten() const { return rowsWritten_; }
     void setRenderSize(int w, int h) { u_.res[0] = float(w); u_.res[1] = float(h); }
 
     // Pin one scene (bench / screenshots); -1 = director's choice.
@@ -91,6 +102,10 @@ private:
     float travel_ = 0, spin_ = 0, orbit_ = 0, roll_ = 0, rollTarget_ = 0;
     float camEase_ = 0, variantEase_ = 0, hue_ = 0, seed_ = 0;
     float pal_[16] = {}, palTarget_[16] = {}, palTau_ = 2.f;
+
+    std::vector<HistoryRow> newRows_;
+    long rowsWritten_ = 0;
+    float rowAcc_ = 0, peak_[kHistCols] = {}, peakHold_[kHistCols] = {};
 };
 
 } // namespace choreo

@@ -56,6 +56,27 @@ inline constexpr SceneInfo kScenes[] = {
          {{0.35f, 0.45f, 0.50f}, {0.40f, 0.45f, 0.50f}, {1.0f, 1.0f, 1.0f}, {0.45f, 0.55f, 0.75f}}, // teal
          {{0.50f, 0.38f, 0.40f}, {0.50f, 0.42f, 0.42f}, {1.0f, 1.0f, 1.0f}, {0.95f, 0.40f, 0.10f}}, // coral
      }},
+    {"ridge", "Spectral Ridge", CameraStyle::Flight, 0.30f, 0.0f, 1.0f, 0.5f, 1.0f,
+     {
+         {{0.50f, 0.50f, 0.50f}, {0.50f, 0.50f, 0.50f}, {1.0f, 1.0f, 1.0f}, {0.00f, 0.10f, 0.20f}}, // full spectrum
+         {{0.50f, 0.40f, 0.55f}, {0.50f, 0.45f, 0.45f}, {0.8f, 0.8f, 0.8f}, {0.55f, 0.75f, 0.95f}}, // cyan / violet
+         {{0.55f, 0.45f, 0.35f}, {0.45f, 0.40f, 0.35f}, {1.0f, 1.0f, 1.0f}, {0.95f, 0.10f, 0.20f}}, // amber / rose
+         {{0.40f, 0.55f, 0.45f}, {0.40f, 0.45f, 0.40f}, {1.0f, 1.0f, 1.0f}, {0.30f, 0.45f, 0.60f}}, // mint / teal
+     }},
+    {"halo", "Bar Halo", CameraStyle::Orbit, 0.35f, 0.003f, 1.1f, 0.6f, 1.0f,
+     {
+         {{0.55f, 0.55f, 0.05f}, {0.45f, 0.45f, 0.00f}, {1.0f, 1.0f, 1.0f}, {0.50f, 0.00f, 0.00f}}, // classic LED: green -> yellow -> red
+         {{0.40f, 0.45f, 0.60f}, {0.45f, 0.45f, 0.40f}, {1.0f, 1.0f, 1.0f}, {0.60f, 0.70f, 0.85f}}, // ice blue -> magenta
+         {{0.50f, 0.50f, 0.50f}, {0.50f, 0.50f, 0.50f}, {1.0f, 1.0f, 1.0f}, {0.00f, 0.33f, 0.67f}}, // rainbow
+         {{0.60f, 0.40f, 0.30f}, {0.40f, 0.40f, 0.35f}, {1.0f, 1.0f, 1.0f}, {0.05f, 0.20f, 0.40f}}, // sunset
+     }},
+    {"tide", "Chrome Tide", CameraStyle::Orbit, 0.25f, 0.0f, 0.9f, 0.4f, 1.0f,
+     {
+         {{0.50f, 0.45f, 0.55f}, {0.50f, 0.45f, 0.45f}, {1.0f, 1.0f, 1.0f}, {0.80f, 0.20f, 0.45f}}, // dusk violet
+         {{0.45f, 0.55f, 0.50f}, {0.45f, 0.45f, 0.45f}, {1.0f, 1.0f, 1.0f}, {0.40f, 0.60f, 0.80f}}, // polar aurora
+         {{0.60f, 0.45f, 0.35f}, {0.40f, 0.40f, 0.40f}, {1.0f, 1.0f, 1.0f}, {0.00f, 0.15f, 0.30f}}, // gold hour
+         {{0.50f, 0.50f, 0.55f}, {0.50f, 0.45f, 0.45f}, {0.9f, 0.9f, 1.0f}, {0.60f, 0.30f, 0.90f}}, // neon noir
+     }},
 };
 inline constexpr int kSceneCount = int(sizeof(kScenes) / sizeof(kScenes[0]));
 

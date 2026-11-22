@@ -13,6 +13,7 @@ struct SDL_GPUGraphicsPipeline;
 struct SDL_GPUTexture;
 struct SDL_GPUSampler;
 struct SDL_GPUCommandBuffer;
+struct SDL_GPUTransferBuffer;
 
 namespace choreo {
 
@@ -26,6 +27,9 @@ public:
     // Records every pass into cmd; the final image goes to `target` (w x h).
     void render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h, int scene,
                 const SceneUniforms& u, const PostLook& post);
+    // Upload history rows (Director::newRows) into the ring texture; `firstIndex` is the running
+    // count of the first row (Director::rowsWritten() - rows.size()). Call before render() in the same cmd.
+    void uploadHistory(SDL_GPUCommandBuffer* cmd, const HistoryRow* rows, int count, long firstIndex);
     // Calibration display (A/V sync): plain flash on each beat plus a beat-phase bar, no post.
     void renderCalibration(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h,
                            float beatPhase, float bpm);
@@ -54,6 +58,9 @@ private:
     // post_: feedback, prefilter, down, up, final, calibrate
     std::vector<SDL_GPUGraphicsPipeline*> post_;
     SDL_GPUSampler* linear_ = nullptr;
+    SDL_GPUSampler* ring_ = nullptr;           // linear, clamp in x, repeat in y (history ring)
+    SDL_GPUTexture* history_tex_ = nullptr;    // kHistCols x kHistRows RGBA16F
+    SDL_GPUTransferBuffer* histUpload_ = nullptr;
 
     static constexpr int kBloomLevels = 5;
     SDL_GPUTexture* scene_ = nullptr;

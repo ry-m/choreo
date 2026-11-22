@@ -215,6 +215,24 @@ void Director::update(const MusicState& m, float dt) {
     for (int i = 0; i < 16; ++i) pal_[i] += (palTarget_[i] - pal_[i]) * (1.f - std::exp(-dt / palTau_));
     palTau_ = follow(palTau_, 2.f, 1.f, 1.f, dt);
 
+    // ---- History rows (spectrogram scenes) ---------------------------------------------------
+    // Peak caps hold for 0.35 s, then fall at 0.9 / s (old-school analyser caps).
+    for (int b = 0; b < kHistCols; ++b) {
+        if (m.spectrum[b] >= peak_[b]) { peak_[b] = m.spectrum[b]; peakHold_[b] = 0.35f; }
+        else if ((peakHold_[b] -= dt) < 0.f) peak_[b] = std::max(m.spectrum[b], peak_[b] - 0.9f * dt);
+    }
+    newRows_.clear();
+    rowAcc_ += dt;
+    while (rowAcc_ >= 1.f / kHistRate) {
+        rowAcc_ -= 1.f / kHistRate;
+        HistoryRow r{};
+        for (int b = 0; b < kHistCols; ++b) { r.px[b][0] = m.spectrum[b]; r.px[b][1] = peak_[b]; }
+        const float scalars[8] = {m.kick, m.snare, m.hat, bass_, loud_, m.beatPulse, m.onset, energy_};
+        for (int k = 0; k < 8; ++k) r.px[k][2] = scalars[k];
+        newRows_.push_back(r);
+        ++rowsWritten_;
+    }
+
     // ---- Pack ---------------------------------------------------------------------------------
     const float strobe = clamp01(m.hat * intensity * intensity * 1.3f) * (m.beatPresent ? 1.f : 0.f);
     u_.res[2] = time_; u_.res[3] = sceneTime_;
@@ -228,6 +246,8 @@ void Director::update(const MusicState& m, float dt) {
     u_.look[0] = variantEase_; u_.look[1] = seed_; u_.look[2] = hue_; u_.look[3] = m.beatPresent ? 1.f : 0.f;
     std::memcpy(u_.pal, pal_, sizeof pal_);
     for (int i = 0; i < 4; ++i) u_.pal[i][3] = 0.f;
+    u_.hist[0] = float((rowsWritten_ + kHistRows - 1) % kHistRows);
+    u_.hist[1] = kHistRate;
 
     const SceneInfo& s = kScenes[scene_];
     // No trails right after a cut: the old scene must not smear into the new one.

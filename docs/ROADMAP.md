@@ -310,7 +310,17 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
     nave of beat-lit windows; lifts shatter the cluster; orbit camera), **Ember Bloom** (volumetric fire
     around an obsidian core with lava veins; fire ring each beat, sparks on hats, eruption on lifts; low
     rising camera with bass shake), **Laser Nebula** (analytic laser fans/cages/curtains over a mirrored
-    neon floor toward a portal ring; flight camera with per-bar roll), **Kaleido Tunnel**.
+    neon floor toward a portal ring; flight camera with per-bar roll), **Kaleido Tunnel**, and three built
+    on the music history: **Spectral Ridge** (the old-school 3D spectrogram waterfall as a hidden-line
+    landscape of the last 4.3 s, bass mirrored in the middle or classic low→high), **Bar Halo** (the classic
+    bar analyser as a ring of 64 segmented LED bars with falling peak caps on a mirror floor around a bass
+    orb; double ring / spiral / flat front wall variants; palette 0 is the green→yellow→red LED ramp) and
+    **Chrome Tide** (liquid chrome where each kick in the history is a ring whose radius is its age, snare
+    ripples, a spectrum aurora in the sky).
+  - Music history: `MusicState::spectrum` (32 log bands 40 Hz–16 kHz, dB over a 60 dB window below a slow
+    running max, fast rise / 0.1 s fall). The director writes 60 rows/s (bands + peak-hold caps + kick,
+    snare, hat, bass, loudness, beat pulse, onset, energy) into a 32×256 RGBA16F ring texture bound to
+    every scene (`histSpec`, `histScalar` in `common.metal`); only new rows are uploaded each frame.
   - Director: `MusicState` gained event counts (`sectionChanges/Lifts/Confirms`, `liftConfirms`): flags
     last one ~10 ms hop and 60 fps frames skipped some. Lift → hit (flash ~0.55 beat, burst, shatter, FOV
     punch); `liftProb ≥ 0.9` (`CHOREO_CUT_PROB`) → immediate cut on the downbeat; lift confirmed → cut one
@@ -335,8 +345,9 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
     are announced ~30–45 ms after the beat; the beat *phase* is predicted and on time). The A/V calibration
     (`[`/`]`) applies to all of it.
   - GPU (M5, `--bench`, 3024×1964 output with the 1.5 MP raymarch cap → 1481×962, all passes): laser 3.5 ms,
-    prism 5.9 (bevelled, edge-antialiased), ember 5.5, tunnel 7.3 (p95 ≤ 8.4) — 21–44% of a 60 fps frame.
-  - Next: more scenes (liquid chrome ripples, particle galaxy with compute, Mandelbox), crossfade-free
+    prism 5.9 (bevelled, edge-antialiased), ember 5.5, tunnel 7.3, ridge 1.8, halo 3.7, tide 2.4 (p95 ≤ 8.3) —
+    11–44% of a 60 fps frame.
+  - Next: more scenes (particle galaxy with compute, Mandelbox), crossfade-free
     transitions that use the outgoing frame (shatter/zoom-through), anticipation from the build (risers →
     tension), per-scene variants that change geometry more, GPU particles.
 

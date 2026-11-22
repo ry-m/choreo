@@ -35,6 +35,8 @@ struct FrameRec {
     float bpm;
     SceneUniforms u;
     PostLook post;
+    std::vector<HistoryRow> rows;  // history rows added this frame
+    long firstRow;                 // running index of rows[0]
 };
 
 std::vector<double> parseList(const char* s) {
@@ -75,8 +77,10 @@ struct Gpu {
         return target && readback && r.init(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, shaderDir);
     }
     // Renders one frame and waits for it; returns GPU wall time in ms. Optionally reads it back.
-    double frame(const FrameRec& f, std::vector<uint8_t>* rgb) {
+    double frame(const FrameRec& f, std::vector<uint8_t>* rgb, const std::vector<HistoryRow>* seekRows = nullptr, long seekFirst = 0) {
         SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(dev);
+        if (seekRows) r.uploadHistory(cmd, seekRows->data(), int(seekRows->size()), seekFirst);
+        r.uploadHistory(cmd, f.rows.data(), int(f.rows.size()), f.firstRow);
         r.render(cmd, target, w, h, f.scene, f.u, f.post);
         if (rgb) {
             SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmd);
@@ -168,7 +172,7 @@ int main(int argc, char** argv) {
         MusicState s = a.stateAt(t);
         d.setRenderSize(int(W * scale), int(H * scale));
         d.update(s, 1.f / fps);
-        frames.push_back({t, d.scene(), s.bpm, d.uniforms(), d.post()});
+        frames.push_back({t, d.scene(), s.bpm, d.uniforms(), d.post(), d.newRows(), d.rowsWritten() - long(d.newRows().size())});
     }
 
     int nCuts = 0;
@@ -247,12 +251,20 @@ int main(int argc, char** argv) {
     std::vector<double> ms;
     long next = -1;
     for (long f : need) {
-        long s0 = std::max(next, f - warm);
-        if (s0 != next) gpu.r.resetHistory();
-        for (long g = std::max(0L, s0); g <= f; ++g) {
+        long s0 = std::max(0L, std::max(next, f - warm));
+        // After a seek: no trails, and the music-history ring refilled with the rows before s0.
+        std::vector<HistoryRow> seekRows;
+        long seekFirst = 0;
+        if (s0 != next) {
+            gpu.r.resetHistory();
+            for (long g = s0 - 1; g >= 0 && seekRows.size() < size_t(kHistRows); --g)
+                seekRows.insert(seekRows.begin(), frames[g].rows.begin(), frames[g].rows.end());
+            seekFirst = frames[s0].firstRow - long(seekRows.size());
+        }
+        for (long g = s0; g <= f; ++g) {
             bool keep = g == f;
             std::vector<uint8_t> rgb;
-            ms.push_back(gpu.frame(frames[g], keep ? &rgb : nullptr));
+            ms.push_back(gpu.frame(frames[g], keep ? &rgb : nullptr, g == s0 && !seekRows.empty() ? &seekRows : nullptr, seekFirst));
             if (!keep) continue;
             if (std::find(shots.begin(), shots.end(), f) != shots.end()) {
                 char name[256];

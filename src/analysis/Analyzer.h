@@ -110,7 +110,8 @@ private:
     int silentHops_ = 0;              // consecutive near-silent hops
     void resetRhythm();               // forget tempo/beat state (song change after silence)
     void softReset();                 // drop rhythm history but keep the beat (hard-cut song change)
-    std::vector<int> novEdges_;
+    std::vector<int> novEdges_, specEdges_;
+    float specMaxDb_ = -60.f;
     std::vector<float> novShort_, novLong_;
     long hopsSinceChange_ = 0;
     float noveltyThresh_ = 1.5f;      // timbre-novelty level that triggers softReset (song cuts: 1.6-2.9)

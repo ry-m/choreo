@@ -23,7 +23,7 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
 - `src/render/` — `Director` (visual contract: hits, cuts on the beat, palettes, cameras; pure CPU),
   `Renderer` (SDL_GPU render graph: HDR scene → trails → bloom → tonemap), `Scenes.h` (scene table).
 - `shaders/` — `common.metal` (prepended to each `scene_<id>.metal`), `post.metal`. R in the app hot-reloads.
-- `src/app/` — app (keys 1-4 pin a scene, 0 = director).
+- `src/app/` — app (keys 1-7 pin a scene, 0 = director).
 - `tools/` — `choreo-render` (headless WAV → analyser → director → GPU: `--cuts` contact sheet,
   `--at T,.. [--sheet]` PNGs, `--events`, `--bench` GPU ms per scene), `choreo-analyze` (offline WAV → beats/tempo), `choreo-live-eval` (plays Spotify,
   captures silently, scores; `--record` saves WAVs), `choreo-features`, eval scripts.
@@ -47,7 +47,7 @@ Python (training/eval only): `.venv/bin/python` (torch, numpy, MPS). Shaders are
 
 - Visuals: check with `choreo-render` (look at the PNGs), not a live demo. Cuts: `tools/eval_cuts.py test`
   (immediate cuts on downbeats, confirmed one beat later; 49% at an annotated boundary). GPU: `choreo-render
-  song.wav --bench --size 3024x1964 --scale 0.49` (all scenes ≤ ~7.5 ms median on M5).
+  song.wav --bench --size 3024x1964 --scale 0.49` (all 7 scenes ≤ ~7.5 ms median on M5).
 
 ## Data (never commit audio, features or datasets)
 `~/.cache/choreo/`: `datasets/{gtzan,ballroom,harmonix}`, `rec/` (Spotify set), `harmonix_rec/`,

@@ -14,7 +14,27 @@ struct Frame {
     float4 fx;     // flash, burstAge, shatter, strobe
     float4 look;   // variant (eased), seed, hue drift, beatPresent
     float4 palA, palB, palC, palD;
+    float4 hist;   // newest history row (0..255), rows per second
 };
+
+// Music history (bound to every scene as texture 0 / sampler 0; see HistoryRow in Director.h).
+#define HIST_ARGS texture2d<float> hist [[texture(0)]], sampler hs [[sampler(0)]]
+constant float HIST_ROWS = 256.0;
+constant float HIST_COLS = 32.0;
+// Row v coordinate for an age in seconds (0 = now); the sampler repeats in v (ring buffer).
+static float histV(constant Frame& u, float ageSec) {
+    float row = u.hist.x - clamp(ageSec * u.hist.y, 0.0, HIST_ROWS - 2.0);
+    return (row + 0.5) / HIST_ROWS;
+}
+// Spectrum (x = 0..1 low to high, linearly interpolated between bands) at an age in seconds.
+static float4 histSpec(texture2d<float> hist, sampler hs, constant Frame& u, float x, float ageSec) {
+    float c = clamp(x, 0.0, 1.0) * (HIST_COLS - 1.0) + 0.5;
+    return hist.sample(hs, float2(c / HIST_COLS, histV(u, ageSec)));
+}
+// Scalar column k (0 kick, 1 snare, 2 hat, 3 bass, 4 loudness, 5 beat pulse, 6 onset, 7 energy).
+static float histScalar(texture2d<float> hist, sampler hs, constant Frame& u, int k, float ageSec) {
+    return hist.sample(hs, float2((float(k) + 0.5) / HIST_COLS, histV(u, ageSec))).b;
+}
 
 struct VOut { float4 pos [[position]]; float2 uv; };
 

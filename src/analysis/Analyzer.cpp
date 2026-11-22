@@ -38,6 +38,10 @@ Analyzer::Analyzer(double sampleRate)
     novEdges_.resize(17);
     for (int b = 0; b <= 16; ++b) novEdges_[b] = bin(40.0 * std::pow(16000.0 / 40.0, b / 16.0));
     for (int b = 1; b <= 16; ++b) novEdges_[b] = std::max(novEdges_[b], novEdges_[b - 1] + 1);
+    constexpr int SB = MusicState::kSpectrumBands;
+    specEdges_.resize(SB + 1);
+    for (int b = 0; b <= SB; ++b) specEdges_[b] = bin(40.0 * std::pow(16000.0 / 40.0, double(b) / SB));
+    for (int b = 1; b <= SB; ++b) specEdges_[b] = std::max(specEdges_[b], specEdges_[b - 1] + 1);
     novShort_.assign(16, 0.f);
     novLong_.assign(16, 0.f);
     // Tuning hooks for offline experiments: CHOREO_HW="w1,w2,w3,w4", CHOREO_PRIOR="center,octaves".
@@ -372,6 +376,25 @@ void Analyzer::analyzeHop() {
     state_.bass = smooth(state_.bass, agc(eB, bassMax_), 0.01f, 0.15f);
     state_.mid = smooth(state_.mid, agc(eM, midMax_), 0.01f, 0.12f);
     state_.treble = smooth(state_.treble, agc(eT, trebMax_), 0.005f, 0.08f);
+
+    // Spectrum bands (visuals only).
+    {
+        float bandDb[MusicState::kSpectrumBands], mx = -200.f;
+        for (int b = 0; b < MusicState::kSpectrumBands; ++b) {
+            double e = 0;
+            int lo = std::min(specEdges_[b], nb - 1), hi = std::min(specEdges_[b + 1], nb);
+            for (int k = lo; k < std::max(hi, lo + 1); ++k) e += double(mag_[k]) * mag_[k];
+            bandDb[b] = float(10.0 * std::log10(e / std::max(1, hi - lo) + 1e-12));
+            mx = std::max(mx, bandDb[b]);
+        }
+        // Running max: jumps up, decays ~1 dB/s, so quiet passages slowly fill the range again.
+        specMaxDb_ = std::max(mx, specMaxDb_ - float(dt));
+        for (int b = 0; b < MusicState::kSpectrumBands; ++b) {
+            float v = std::clamp((bandDb[b] - (specMaxDb_ - 60.f)) / 60.f, 0.f, 1.f);
+            float& cur = state_.spectrum[b];
+            cur = v > cur ? v : cur + (v - cur) * (1.f - std::exp(-float(dt) / 0.1f));
+        }
+    }
 
     float rms = float(std::sqrt(sumSq / kFrameSize));
     float db = 20.f * std::log10(rms + 1e-9f);

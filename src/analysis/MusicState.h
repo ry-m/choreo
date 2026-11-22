@@ -46,6 +46,12 @@ struct MusicState {
     float energyRatio = 1;     // short-term / long-term energy (>1 = getting louder, drops spike it)
     float brightness = 0;      // spectral centroid, 0..1
     float novelty = 0;         // how different the last ~1 s sounds from the last ~6 s (timbre change)
+
+    // Spectrum for analyser-style visuals: 32 log-spaced bands, 40 Hz .. 16 kHz, in dB mapped to
+    // 0..1 over a 60 dB range below a slow running maximum of all bands (so the spectral shape is kept).
+    // Fast rise, ~0.1 s fall, like a classic bar analyser.
+    static constexpr int kSpectrumBands = 32;
+    float spectrum[kSpectrumBands] = {};
 };
 
 } // namespace choreo

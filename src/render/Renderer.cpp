@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <cstring>
 #include <initializer_list>
 #include <sstream>
 
@@ -45,6 +46,28 @@ bool Renderer::init(SDL_GPUDevice* device, int outFormat, const std::string& sha
     si.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
     si.address_mode_u = si.address_mode_v = si.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     linear_ = SDL_CreateGPUSampler(device_, &si);
+    si.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    ring_ = SDL_CreateGPUSampler(device_, &si);
+
+    SDL_GPUTextureCreateInfo ti{};
+    ti.type = SDL_GPU_TEXTURETYPE_2D;
+    ti.format = kHdr;
+    ti.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    ti.width = kHistCols; ti.height = kHistRows;
+    ti.layer_count_or_depth = 1; ti.num_levels = 1;
+    history_tex_ = SDL_CreateGPUTexture(device_, &ti);
+    SDL_GPUTransferBufferCreateInfo bi{};
+    bi.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    bi.size = kHistCols * kHistRows * 4 * sizeof(_Float16);
+    histUpload_ = SDL_CreateGPUTransferBuffer(device_, &bi);
+    if (!history_tex_ || !histUpload_ || !ring_) { SDL_Log("History texture: %s", SDL_GetError()); return false; }
+    // Start from silence (texture contents are undefined until written).
+    std::vector<HistoryRow> zero(kHistRows);
+    std::memset(zero.data(), 0, zero.size() * sizeof(HistoryRow));
+    if (SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device_)) {
+        uploadHistory(cmd, zero.data(), kHistRows, 0);
+        SDL_SubmitGPUCommandBuffer(cmd);
+    }
     return linear_ && buildAll(scenes_, post_);
 }
 
@@ -90,7 +113,7 @@ bool Renderer::buildAll(std::vector<SDL_GPUGraphicsPipeline*>& scenes, std::vect
     for (int i = 0; i < kSceneCount && ok; ++i) {
         std::string file = shaderDir_ + "/scene_" + kScenes[i].id + ".metal";
         ok = readFile(file, src);
-        SDL_GPUGraphicsPipeline* p = ok ? makePipeline(common + src, "fmain", kHdr, 0, file) : nullptr;
+        SDL_GPUGraphicsPipeline* p = ok ? makePipeline(common + src, "fmain", kHdr, 1, file) : nullptr;
         scenes.push_back(p);
         ok = p != nullptr;
     }
@@ -194,7 +217,8 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
     u.res[0] = float(rw_); u.res[1] = float(rh_);
 
     auto pass = [&](SDL_GPUTexture* dst, unsigned vw, unsigned vh, SDL_GPUGraphicsPipeline* pipe,
-                    std::initializer_list<SDL_GPUTexture*> srcs, const void* ubo, Uint32 size, bool clear = false) {
+                    std::initializer_list<SDL_GPUTexture*> srcs, const void* ubo, Uint32 size, bool clear = false,
+                    SDL_GPUSampler* sampler = nullptr) {
         SDL_GPUColorTargetInfo t{};
         t.texture = dst;
         t.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE;
@@ -206,7 +230,7 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
         SDL_BindGPUGraphicsPipeline(rp, pipe);
         SDL_GPUTextureSamplerBinding b[2]{};
         Uint32 nb = 0;
-        for (SDL_GPUTexture* s : srcs) { b[nb].texture = s; b[nb].sampler = linear_; ++nb; }
+        for (SDL_GPUTexture* s : srcs) { b[nb].texture = s; b[nb].sampler = sampler ? sampler : linear_; ++nb; }
         if (nb) SDL_BindGPUFragmentSamplers(rp, 0, b, nb);
         SDL_PushGPUFragmentUniformData(cmd, 0, ubo, size);
         SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
@@ -222,7 +246,7 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
     cur_ ^= 1;
 
     // 1) Scene, raymarched in HDR into the top-left rw x rh of the scene texture.
-    pass(scene_, rw_, rh_, scenes_[scene], {}, &u, sizeof u);
+    pass(scene_, rw_, rh_, scenes_[scene], {history_tex_}, &u, sizeof u, false, ring_);
 
     // 2) Feedback: blend the warped previous frame into the new one.
     PostUniforms pu{};
@@ -262,6 +286,33 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
     pass(target, w, h, post_[kFinal], {history_[cur_], upper}, &pu, sizeof pu);
 }
 
+void Renderer::uploadHistory(SDL_GPUCommandBuffer* cmd, const HistoryRow* rows, int count, long firstIndex) {
+    if (count <= 0 || !histUpload_) return;
+    if (count > kHistRows) { rows += count - kHistRows; firstIndex += count - kHistRows; count = kHistRows; }
+    auto* dst = static_cast<_Float16*>(SDL_MapGPUTransferBuffer(device_, histUpload_, true));
+    if (!dst) return;
+    for (int r = 0; r < count; ++r)
+        for (int c = 0; c < kHistCols; ++c)
+            for (int k = 0; k < 4; ++k) dst[(size_t(r) * kHistCols + c) * 4 + k] = _Float16(rows[r].px[c][k]);
+    SDL_UnmapGPUTransferBuffer(device_, histUpload_);
+    SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmd);
+    // Rows go to ring positions (firstIndex + r) % kHistRows: at most two contiguous runs.
+    int done = 0;
+    while (done < count) {
+        int row = int((firstIndex + done) % kHistRows);
+        int run = std::min(count - done, kHistRows - row);
+        SDL_GPUTextureTransferInfo src{};
+        src.transfer_buffer = histUpload_;
+        src.offset = Uint32(size_t(done) * kHistCols * 4 * sizeof(_Float16));
+        SDL_GPUTextureRegion reg{};
+        reg.texture = history_tex_;
+        reg.y = Uint32(row); reg.w = kHistCols; reg.h = Uint32(run); reg.d = 1;
+        SDL_UploadToGPUTexture(cp, &src, &reg, false);
+        done += run;
+    }
+    SDL_EndGPUCopyPass(cp);
+}
+
 void Renderer::renderCalibration(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigned w, unsigned h,
                                  float beatPhase, float bpm) {
     if (post_.empty()) return;
@@ -287,7 +338,10 @@ void Renderer::shutdown() {
     for (auto* p : post_) SDL_ReleaseGPUGraphicsPipeline(device_, p);
     scenes_.clear(); post_.clear();
     if (linear_) SDL_ReleaseGPUSampler(device_, linear_);
-    linear_ = nullptr;
+    if (ring_) SDL_ReleaseGPUSampler(device_, ring_);
+    if (history_tex_) SDL_ReleaseGPUTexture(device_, history_tex_);
+    if (histUpload_) SDL_ReleaseGPUTransferBuffer(device_, histUpload_);
+    linear_ = ring_ = nullptr; history_tex_ = nullptr; histUpload_ = nullptr;
     device_ = nullptr;
 }
 

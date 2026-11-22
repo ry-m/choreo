@@ -23,7 +23,7 @@ void printHelp() {
         "  --app com.spotify.client   visualise one app only (add --mute to silence that app)\n"
         "  --calibrate                play a click track; flash on each detected beat (A/V sync)\n"
         "  --tap                      tap SPACE on the beat; prints how far Choreo's beats are from yours\n"
-        "keys: F fullscreen, [ / ] visuals 5 ms earlier / later (saved), 1-4 pin a scene, 0 director's choice,\n"
+        "keys: F fullscreen, [ / ] visuals 5 ms earlier / later (saved), 1-7 pin a scene, 0 director's choice,\n"
         "      R reload shaders, Esc quit\n");
 }
 
@@ -205,7 +205,11 @@ int main(int argc, char** argv) {
             Uint32 w = 0, h = 0;
             if (SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window, &swap, &w, &h) && swap) {
                 if (calibrate) renderer.renderCalibration(cmd, swap, w, h, shown.beatPhase, shown.bpm);
-                else renderer.render(cmd, swap, w, h, director.scene(), director.uniforms(), director.post());
+                else {
+                    const auto& rows = director.newRows();
+                    renderer.uploadHistory(cmd, rows.data(), int(rows.size()), director.rowsWritten() - long(rows.size()));
+                    renderer.render(cmd, swap, w, h, director.scene(), director.uniforms(), director.post());
+                }
             }
             SDL_SubmitGPUCommandBuffer(cmd);
         }
