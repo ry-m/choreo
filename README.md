@@ -1,4 +1,4 @@
-# Choreo
+<p align="center"><img src="docs/images/choreo-logo.png" alt="Choreo" width="520"></p>
 
 A native music visualiser for macOS. It listens to whatever your Mac is playing, tracks the beat,
 bars and song sections in real time, and drives seven raymarched scenes that cut on the downbeat
