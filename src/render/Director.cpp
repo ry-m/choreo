@@ -14,6 +14,23 @@ float follow(float cur, float target, float attack, float release, float dt) {
 }
 float decay(float v, float tau, float dt) { return v * std::exp(-dt / std::max(tau, 1e-4f)); }
 float clamp01(float x) { return std::min(1.f, std::max(0.f, x)); }
+float wrapTurn(float x) { return x - std::floor(x + 0.5f); }  // -> [-0.5, 0.5)
+
+// Rotation of RGB about the grey axis by `turns` (a hue shift that keeps luminance roughly), as rows.
+void hueMatrix(float turns, float rows[3][4]) {
+    const float a = turns * 6.2831853f, c = std::cos(a), s = std::sin(a), k = (1.f - c) / 3.f, q = std::sqrt(1.f / 3.f) * s;
+    const float m[3][3] = {{c + k, k - q, k + q}, {k + q, c + k, k - q}, {k - q, k + q, c + k}};
+    for (int r = 0; r < 3; ++r) { for (int i = 0; i < 3; ++i) rows[r][i] = m[r][i]; rows[r][3] = 0.f; }
+}
+// CosinePalette (a, b, c, d as float[3]) -> 16 floats laid out as four float4 (w = 0), as the shader reads them.
+void loadPalette(float dst[16], const CosinePalette& p) {
+    const float* v[4] = {p.a, p.b, p.c, p.d};
+    for (int r = 0; r < 4; ++r) { for (int i = 0; i < 3; ++i) dst[r * 4 + i] = v[r][i]; dst[r * 4 + 3] = 0.f; }
+}
+float bandMean(const MusicState& m, int lo, int hi) {
+    float s = 0; for (int b = lo; b <= hi; ++b) s += m.spectrum[b];
+    return s / float(hi - lo + 1);
+}
 
 constexpr int kMinBeatsBetweenCuts = 8;  // the detector itself fires >= 8 beats apart per head
 // Quiet stretches: the section detector can stay silent for minutes (or there is no section model).
@@ -25,8 +42,35 @@ constexpr int kMaxBars = 32;
 
 Director::Director() {
     if (const char* e = std::getenv("CHOREO_CUT_PROB")) cutProb = float(std::atof(e));
-    std::memcpy(pal_, &kScenes[0].palettes[0], sizeof pal_);
-    std::memcpy(palTarget_, pal_, sizeof pal_);
+    remix(true);
+}
+
+void Director::remix(bool isCut, int partial) {
+    const SceneInfo& s = kScenes[scene_];
+    // Primary: the anchor palette, hue-rotated by up to the scene's spread (on cuts only, so a scene
+    // keeps its colour identity through a song section). Accent: a different anchor of the family
+    // in a harmony relation to the primary hue.
+    if (isCut) hue1Target_ = (2.f * rand01() - 1.f) * s.hueSpread;
+    static constexpr float kHarmony[] = {0.5f, 1.f / 3.f, -1.f / 3.f, 1.f / 12.f, -1.f / 12.f, 5.f / 12.f, -5.f / 12.f, 0.f};
+    hue2Target_ = hue1Target_ + kHarmony[rand() % 8];
+    const int accIdx = (palIdx_ + 1 + int(rand() % 3)) % 4;
+    loadPalette(palTarget_, s.palettes[palIdx_]);
+    loadPalette(accTarget_, s.palettes[accIdx]);
+    if (isCut) {
+        for (int i = 0; i < 8; ++i) geneTarget_[i] = rand01();
+        std::memcpy(pal_, palTarget_, sizeof pal_);
+        std::memcpy(acc_, accTarget_, sizeof acc_);
+        std::memcpy(gene_, geneTarget_, sizeof gene_);
+        hue1_ = hue1Target_; hue2_ = hue2Target_;
+    } else {
+        for (int k = 0; k < partial; ++k) geneTarget_[rand() % 8] = rand01();
+    }
+    // Tuning hook: CHOREO_GENES="g0,g1,...,g7" pins the genes (benchmark worst cases, compare looks).
+    if (const char* e = std::getenv("CHOREO_GENES")) {
+        float g[8];
+        if (std::sscanf(e, "%f,%f,%f,%f,%f,%f,%f,%f", &g[0], &g[1], &g[2], &g[3], &g[4], &g[5], &g[6], &g[7]) == 8)
+            for (int i = 0; i < 8; ++i) gene_[i] = geneTarget_[i] = g[i];
+    }
 }
 
 uint32_t Director::rand() {
@@ -38,8 +82,7 @@ void Director::forceScene(int s) {
     forced_ = s;
     if (s >= 0 && s < kSceneCount) {
         scene_ = s;
-        std::memcpy(palTarget_, &kScenes[s].palettes[palIdx_ % 4], sizeof palTarget_);
-        std::memcpy(pal_, palTarget_, sizeof pal_);
+        remix(true);
     }
 }
 
@@ -77,8 +120,7 @@ void Director::cut(const MusicState& m, const std::string& why) {
     camEase_ = float(camPreset_);
     variantEase_ = float(variant_);
     seed_ = float(rand() % 1000) / 1000.f;
-    std::memcpy(palTarget_, &kScenes[scene_].palettes[palIdx_], sizeof palTarget_);
-    std::memcpy(pal_, palTarget_, sizeof pal_);   // instant: the cut is the change
+    remix(true);   // instant: the cut is the change
     sceneTime_ = 0.f;
     flash_ = std::max(flash_, 0.8f);
     lastCutBeat_ = m.beatCount;
@@ -90,7 +132,7 @@ void Director::cut(const MusicState& m, const std::string& why) {
 // angle (eased), next geometry variant, a modest flash.
 void Director::smallChange(const MusicState& m, const char* why) {
     palIdx_ = (palIdx_ + 1 + int(rand() % 2)) % 4;
-    std::memcpy(palTarget_, &kScenes[scene_].palettes[palIdx_], sizeof palTarget_);
+    remix(false, 3);
     palTau_ = 0.35f * beatSec(m);
     camPreset_ = (camPreset_ + 1 + int(rand() % 3)) % 4;
     variant_ = (variant_ + 1) % 4;
@@ -132,6 +174,7 @@ void Director::update(const MusicState& m, float dt) {
         if (downbeat) {
             barPulse_ = 1.f;
             ++barsSinceCut_;
+            if (m.beatPresent) barTarget_ += 1.f;
             // Flight: the camera leans the other way every bar (phrase-level camera language).
             rollTarget_ = -rollTarget_ + (rollTarget_ == 0 ? 0.25f : 0.f);
         }
@@ -206,14 +249,35 @@ void Director::update(const MusicState& m, float dt) {
     spin_ += (0.08f + 0.9f * m.snare + 0.5f * build_) * dt;
     orbit_ += (0.04f + 0.18f * energy_ + 0.35f * build_ + 0.3f * fovPunch_) * dt;
     roll_ = follow(roll_, rollTarget_ * (0.4f + intensity) + 0.25f * m.snare, 0.15f, 0.4f, dt);
+    static const char* pinCam = std::getenv("CHOREO_CAM");   // debug: pin the camera preset (0..3)
+    if (pinCam) { camPreset_ = std::atoi(pinCam) % 4; camEase_ = float(camPreset_); }
     camEase_ = follow(camEase_, float(camPreset_), 0.35f * B, 0.35f * B, dt);
     if (std::fabs(camEase_ - camPreset_) < 1e-3f) camEase_ = float(camPreset_);
     variantEase_ = follow(variantEase_, float(variant_), 0.5f * B, 0.5f * B, dt);
     hue_ += (0.004f + 0.02f * energy_) * dt;
+    barMove_ = follow(barMove_, barTarget_, 0.3f * B * bpb, 0.3f * B * bpb, dt);
 
     // Palette: blends toward the target (slowly by default, ~a beat after a small change).
     for (int i = 0; i < 16; ++i) pal_[i] += (palTarget_[i] - pal_[i]) * (1.f - std::exp(-dt / palTau_));
+    for (int i = 0; i < 16; ++i) acc_[i] += (accTarget_[i] - acc_[i]) * (1.f - std::exp(-dt / palTau_));
+    const float kPal = 1.f - std::exp(-dt / palTau_);
+    hue1_ += wrapTurn(hue1Target_ - hue1_) * kPal;
+    hue2_ += wrapTurn(hue2Target_ - hue2_) * kPal;
+    for (int i = 0; i < 8; ++i) gene_[i] += (geneTarget_[i] - gene_[i]) * (1.f - std::exp(-dt / (0.6f * B)));
     palTau_ = follow(palTau_, 2.f, 1.f, 1.f, dt);
+
+    // ---- Band features ------------------------------------------------------------------------
+    // Bands: 40 Hz * 400^(b/32). sub 40-80 Hz, body 80-240 Hz, voice 240 Hz-3.4 kHz, air 6.5-16 kHz.
+    sub_ = follow(sub_, bandMean(m, 0, 3), 0.02f, 0.2f, dt);
+    body_ = follow(body_, bandMean(m, 4, 9), 0.03f, 0.25f, dt);
+    const float v = bandMean(m, 10, 23);
+    voiceSlow_ = follow(voiceSlow_, v, 0.2f, 0.5f, dt);       // sustained: drum hits barely move it
+    voiceLong_ = voiceLong_ == 0.f ? v : follow(voiceLong_, v, 6.f, 6.f, dt);
+    const float a = bandMean(m, 26, 31);
+    airFast_ = follow(airFast_, a, 0.005f, 0.07f, dt);
+    airSlow_ = follow(airSlow_, a, 0.6f, 0.6f, dt);
+    const float voice = clamp01(0.5f + 5.f * (voiceSlow_ - voiceLong_)) * clamp01((voiceSlow_ - 0.2f) * 3.f);
+    const float air = clamp01(3.f * (airFast_ - airSlow_));
 
     // ---- History rows (spectrogram scenes) ---------------------------------------------------
     // Peak caps hold for 0.35 s, then fall at 0.9 / s (old-school analyser caps).
@@ -248,6 +312,16 @@ void Director::update(const MusicState& m, float dt) {
     for (int i = 0; i < 4; ++i) u_.pal[i][3] = 0.f;
     u_.hist[0] = float((rowsWritten_ + kHistRows - 1) % kHistRows);
     u_.hist[1] = kHistRate;
+    u_.hist[2] = barMove_;
+    std::memcpy(u_.acc, acc_, sizeof acc_);
+    for (int i = 0; i < 4; ++i) u_.acc[i][3] = 0.f;
+    hueMatrix(hue1_, u_.hueRot);
+    hueMatrix(hue2_, u_.accRot);
+    std::memcpy(u_.gene, gene_, sizeof gene_);
+    u_.bands[0] = sub_; u_.bands[1] = body_; u_.bands[2] = voice; u_.bands[3] = air;
+    if (std::getenv("CHOREO_DUMP_BANDS") && int(time_ * 10) != int((time_ - dt) * 10))
+        std::fprintf(stderr, "pal %d hue %.2f/%.2f scene %d ", palIdx_, hue1_, hue2_, scene_), std::fprintf(stderr, "bands %.1f sub %.2f body %.2f voice %.2f (slow %.2f long %.2f) air %.2f kick %.2f snare %.2f\n", m.time,
+                     sub_, body_, voice, voiceSlow_, voiceLong_, air, m.kick, m.snare);
 
     const SceneInfo& s = kScenes[scene_];
     // No trails right after a cut: the old scene must not smear into the new one.

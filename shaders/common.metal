@@ -14,8 +14,47 @@ struct Frame {
     float4 fx;     // flash, burstAge, shatter, strobe
     float4 look;   // variant (eased), seed, hue drift, beatPresent
     float4 palA, palB, palC, palD;
-    float4 hist;   // newest history row (0..255), rows per second
+    float4 hist;   // newest history row (0..255), rows per second, bar move (+1 per bar, eased: lurches into each bar)
+    float4 accA, accB, accC, accD;  // accent palette (a second anchor in a harmony hue)
+    float4 hr0, hr1, hr2;           // primary palette hue rotation (rows)
+    float4 ar0, ar1, ar2;           // accent palette hue rotation (rows)
+    float4 gene0, gene1;            // 8 random genes (0..1), re-rolled per cut, partly per section
+    float4 bands;  // sub, body, voice (sustained mids: vocals/pads/leads), air (hi shimmer: hats/claps)
 };
+
+// Noise volume (bound to every scene as texture 1 / sampler 1, repeat): 64^3 RGBA8, tileable,
+// 8 noise cells per tile. R, G: independent gradient noise (0..1, mean 0.5); B: Worley F1 (distance
+// to the nearest feature point, ~0..1); A: Worley F2 - F1 (0 on cell borders: cracks, veins, facets).
+#define NOISE_ARGS texture3d<float> nzt [[texture(1)]], sampler nzs [[sampler(1)]]
+#define NZ nzt, nzs
+#define NZP texture3d<float> nzt, sampler nzs
+// All four channels at p, in noise-cell units (period 8).
+static float4 nz4(NZP, float3 p) { return nzt.sample(nzs, p * 0.125); }
+// Gradient-noise fbm from the volume (R channel), 0..1, mean 0.5, contrast-normalised so it spans
+// about the same range as one octave of value noise (std ~0.17). Octaves are rotated to hide the lattice.
+static float nfbm(NZP, float3 p, int oct) {
+    const float3x3 m = float3x3(float3(0.00, 0.80, 0.60), float3(-0.80, 0.36, -0.48), float3(-0.60, -0.48, 0.64)) * 2.02;
+    float a = 0.5, s = 0.0;
+    for (int i = 0; i < oct; ++i) { s += a * (nzt.sample(nzs, p * 0.125).r - 0.5); p = m * p + 0.37; a *= 0.5; }
+    return clamp(0.5 + 1.95 * s, 0.0, 1.0);
+}
+// Ridged multifractal (sharp crests: lightning, veins, marble), 0..1.
+static float nridge(NZP, float3 p, int oct) {
+    const float3x3 m = float3x3(float3(0.00, 0.80, 0.60), float3(-0.80, 0.36, -0.48), float3(-0.60, -0.48, 0.64)) * 2.02;
+    float a = 0.5, s = 0.0, w = 0.0, prev = 1.0;
+    for (int i = 0; i < oct; ++i) {
+        float n = 1.0 - abs(nzt.sample(nzs, p * 0.125).g * 2.0 - 1.0);
+        n *= n;
+        s += a * n * prev; w += a; prev = n;
+        p = m * p + 0.71; a *= 0.5;
+    }
+    return s / w;
+}
+// Domain-warped fbm (marbled, flowing): q warps p by two noise channels first.
+static float nwarp(NZP, float3 p, float amt, int oct) {
+    float4 q = nzt.sample(nzs, p * 0.125 * 0.5);
+    return nfbm(NZ, p + (q.rgr - 0.5) * amt * 2.0, oct);
+}
 
 // Music history (bound to every scene as texture 0 / sampler 0; see HistoryRow in Director.h).
 #define HIST_ARGS texture2d<float> hist [[texture(0)]], sampler hs [[sampler(0)]]
@@ -52,9 +91,19 @@ static float2x2 rot(float a) { float c = cos(a), s = sin(a); return float2x2(c, 
 static float modf1(float x, float y) { return x - y * floor(x / y); }
 static float sat(float x) { return clamp(x, 0.0, 1.0); }
 
+// Primary and accent palettes (cosine palettes, hue-rotated by the director's remix).
 static float3 pal(constant Frame& u, float t) {
-    return u.palA.xyz + u.palB.xyz * cos(TAU * (u.palC.xyz * t + u.palD.xyz));
+    float3 c = u.palA.xyz + u.palB.xyz * cos(TAU * (u.palC.xyz * t + u.palD.xyz));
+    return max(float3(dot(u.hr0.xyz, c), dot(u.hr1.xyz, c), dot(u.hr2.xyz, c)), 0.0);
 }
+static float3 acc(constant Frame& u, float t) {
+    float3 c = u.accA.xyz + u.accB.xyz * cos(TAU * (u.accC.xyz * t + u.accD.xyz));
+    return max(float3(dot(u.ar0.xyz, c), dot(u.ar1.xyz, c), dot(u.ar2.xyz, c)), 0.0);
+}
+// Gene k (0..7).
+static float gene(constant Frame& u, int k) { return k < 4 ? u.gene0[k] : u.gene1[k - 4]; }
+// Discrete choice from a gene: 0..n-1.
+static int geneI(constant Frame& u, int k, int n) { return min(int(gene(u, k) * float(n)), n - 1); }
 
 static float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
 static float hash21(float2 p) { float3 p3 = fract(float3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }

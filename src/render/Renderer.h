@@ -61,6 +61,9 @@ private:
     SDL_GPUSampler* ring_ = nullptr;           // linear, clamp in x, repeat in y (history ring)
     SDL_GPUTexture* history_tex_ = nullptr;    // kHistCols x kHistRows RGBA16F
     SDL_GPUTransferBuffer* histUpload_ = nullptr;
+    SDL_GPUTexture* noise_ = nullptr;          // kNoiseSize^3 RGBA8 tileable noise volume (texture 1 of every scene)
+    SDL_GPUSampler* wrap_ = nullptr;           // linear, repeat in all axes
+    bool makeNoise();
 
     static constexpr int kBloomLevels = 5;
     SDL_GPUTexture* scene_ = nullptr;

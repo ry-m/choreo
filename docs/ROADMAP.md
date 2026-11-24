@@ -347,6 +347,50 @@ section starts (from `BarTracker`), never mid-bar, and never delayed until the n
   - GPU (M5, `--bench`, 3024×1964 output with the 1.5 MP raymarch cap → 1481×962, all passes): laser 3.5 ms,
     prism 5.9 (bevelled, edge-antialiased), ember 5.5, tunnel 7.3, ridge 1.8, halo 3.7, tide 2.4 (p95 ≤ 8.3) —
     11–44% of a 60 fps frame.
+  - **Remaster (visual engine v2)**: every scene rewritten for texture, sound-specific reactions, colour
+    variety and self-remixing, each signed off in a live demo. Shared systems:
+    - Remix genome: 8 genes per scene (`gene`/`geneI` in `common.metal`), all rolled on a cut, 3 re-rolled
+      and eased in on a smaller change. Each scene documents its genes in its header. `CHOREO_GENES=g0,..,g7`
+      pins them; `CHOREO_CAM=0..3` pins the camera preset (both debug-only, for sheets and worst-case benches).
+    - Colour: an accent palette (second anchor in a harmony hue: complement, triad, analogous, split) next
+      to the primary (`acc()`), and a hue rotation of both on each cut limited by `Scenes.h` `hueSpread`
+      (ember 0.06: fire must stay fire). Fixed a long-standing bug: the palette copy read 16 floats from a
+      12-float `CosinePalette`, so every scene had scrambled palettes.
+    - Sound bands (render-side only, the analyser is untouched): `bands` = sub, body, voice (sustained mids
+      vs a 6 s mean: vocals, pads, leads), air (fast minus slow hi shimmer: hats, claps). Bar move
+      (`hist.z`, +1 per downbeat while a beat is present, eased over 0.3 bar) drives a camera step every bar.
+    - Noise volume: 64³ RGBA8 tileable (gradient ×2, Worley F1, F2−F1) bound as texture 1 of every scene;
+      `nz4`, `nfbm`, `nridge`, `nwarp`. 8-bit and sampled, it replaced ALU noise (Ember 24.8 → 7 ms).
+    - Quality: FXAA in the feedback pass; scenes filter by the pixel footprint (lines and beams keep their
+      energy below a pixel, fine texture fades with distance, Prism box-filters its refracted environment).
+  - Scenes after the remaster:
+    - **Ember**: shape per gene (sphere / rock / torus) with Worley plates and lava cracks, fire tongues
+      licking on snares and rising with the voice, chemical flame tint in the outer layer, smoke, basalt
+      ground with heat rings from past kicks, sparks on air.
+    - **Kaleido Tunnel**: 5/7/9-fold symmetry, fold angles and plate shapes per gene, two-tone metal plates
+      with etched circuits glinting on hats, a voice-driven helix of light, kick rings running down the walls.
+    - **Prism Cathedral**: clear / frosted / milky crystals, dispersion and window counts per gene, a voice
+      heart in the core, two-colour windows; edges antialiased (footprint normals, filtered environment).
+    - **Laser Nebula**: 10–20 beams through noise-textured smoke, a mirrored accent fan on snares, nebula
+      with dust lanes and voice aurora, portal ring / double ring / polygon, wet patches on the floor.
+    - **Spectral Ridge**: no longer a neon wireframe (the backdrop never matched it). An organic landscape
+      lit by a low sun / moon / eclipse and fading into the same sky, the music shown as light inside the
+      land: bioluminescent moss veins, dunes with glowing crests, ice lit from within, lava crust; glowing
+      flakes on all of them. Kick and snare waves roll back in time, the live edge glows with the current
+      spectrum, optional mirror lake. Side preset is a high three-quarter view across the spectrogram.
+    - **Bar Halo**: glass housings with filtered LED segments (sides only, tops are glass), 48/64/80 bars,
+      box / tube / blade, block or bead caps, three colour modes; plasma / crystal / eclipse orb that lights
+      the bars; mirror / stone tile / brushed groove floor with kick shockwaves; nebula backdrop.
+    - **Chrome Tide**: dusk / night / storm sky (lightning on snares), spectrum as aurora curtains or pillars
+      of light (the old peak line graph is gone), chrome / gold / black mercury / oil-film liquid with
+      wind ripples and sun glitter on hats, optional chrome sphere or glyph obelisk.
+  - Lessons: Ridge's first remaster kept neon lines on a soft sky and read as the weakest scene; the
+    backdrop and the music-reactive layer must share one look. Check every camera preset (`CHOREO_CAM`):
+    Ridge's side view hid the live spectrum, Halo's close view blew out. Bench worst-case genes in the
+    all-scene run; a pinned `--scene` bench underestimates (Prism 6.2 pinned vs 9.6 ms in the full run).
+  - GPU after the remaster (same bench, random genes): prism 7.1 ms, ember 6.5, tunnel 5.8, laser 3.5,
+    ridge 3.3, halo 3.1, tide 2.5 (p95 ≤ 8.3; worst-case genes: prism 7.1, ember 7.1, tunnel 6.3, laser 4.0,
+    ridge 3.3, halo 3.3, tide 2.5).
   - Next: more scenes (particle galaxy with compute, Mandelbox), crossfade-free
     transitions that use the outgoing frame (shatter/zoom-through), anticipation from the build (risers →
     tension), per-scene variants that change geometry more, GPU particles.

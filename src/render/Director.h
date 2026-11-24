@@ -30,7 +30,15 @@ struct SceneUniforms {
     float fx[4];     // flash, burst age (s since the last hit; large = none), shatter, strobe
     float look[4];   // variant (eased), seed, hue drift, beat present (0/1)
     float pal[4][4]; // cosine palette a, b, c, d (xyz)
-    float hist[4];   // history ring: newest row index (0..kHistRows-1), rows per second, 0, 0
+    float hist[4];   // history ring: newest row index (0..kHistRows-1), rows per second; bar move (see below), 0
+    // Remix (re-rolled on cuts; partly on section changes; eased in between):
+    float acc[4][4];    // accent palette a, b, c, d: a second anchor of the family, in a harmony hue
+    float hueRot[3][4]; // rows of the primary palette's hue rotation (about the grey axis)
+    float accRot[3][4]; // rows of the accent palette's hue rotation
+    float gene[2][4];   // 8 uniform random "genes" each scene maps to structure (0..1)
+    // Band features (from the spectrum, render side): sub, body (low mids), voice (sustained mids,
+    // transients removed: vocals, pads, leads), air (high shimmer above its own average: hats, claps, snaps)
+    float bands[4];
 };
 
 // Music history for spectrogram-style scenes: one row per 1/60 s in a kHistRows ring texture
@@ -79,6 +87,10 @@ private:
     void hit(const MusicState& m, float strength, const char* why);
     void cut(const MusicState& m, const std::string& why);
     void smallChange(const MusicState& m, const char* why);
+    // New palette pair (anchor indices palIdx_ and an accent, hue rotations by a harmony rule) and
+    // genes: all of them on a cut (instant), `partial` on section changes (eased).
+    void remix(bool cut, int partial = 0);
+    float rand01() { return float(rand() % 100000) / 100000.f; }
     void log(const MusicState& m, const char* kind, const std::string& why, float prob = 0);
     uint32_t rand();
     float beatSec(const MusicState& m) const { return 60.f / std::max(40.f, m.bpm); }
@@ -102,6 +114,11 @@ private:
     float travel_ = 0, spin_ = 0, orbit_ = 0, roll_ = 0, rollTarget_ = 0;
     float camEase_ = 0, variantEase_ = 0, hue_ = 0, seed_ = 0;
     float pal_[16] = {}, palTarget_[16] = {}, palTau_ = 2.f;
+    float acc_[16] = {}, accTarget_[16] = {};
+    float hue1_ = 0, hue1Target_ = 0, hue2_ = 0, hue2Target_ = 0;  // turns
+    float gene_[8] = {}, geneTarget_[8] = {};
+    float barTarget_ = 0, barMove_ = 0;  // +1 per downbeat; barMove_ eases toward it (camera lurches into each bar)
+    float voiceSlow_ = 0, voiceLong_ = 0, airFast_ = 0, airSlow_ = 0, sub_ = 0, body_ = 0;
 
     std::vector<HistoryRow> newRows_;
     long rowsWritten_ = 0;

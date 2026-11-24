@@ -23,6 +23,57 @@ struct PostUniforms {
     float p0[4], p1[4], p2[4];
 };
 
+constexpr int kNoiseSize = 64, kNoiseCells = 8;   // voxels per side, noise cells per tile
+
+// Tileable noise volume: R, G gradient noise (two seeds), B Worley F1, A Worley F2 - F1. Period kNoiseCells.
+std::vector<uint8_t> bakeNoise() {
+    const int N = kNoiseSize, C = kNoiseCells;
+    auto hash = [](uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return x; };
+    auto h3 = [&](int x, int y, int z, uint32_t seed) {
+        x = ((x % C) + C) % C; y = ((y % C) + C) % C; z = ((z % C) + C) % C;
+        return hash(uint32_t(x) * 73856093u ^ uint32_t(y) * 19349663u ^ uint32_t(z) * 83492791u ^ seed * 2654435761u);
+    };
+    auto unit = [](uint32_t h) { return float(h & 0xffffff) / float(0xffffff); };
+    auto grad = [&](int x, int y, int z, uint32_t seed, float fx, float fy, float fz) {
+        uint32_t h = h3(x, y, z, seed);
+        float gx = unit(h) * 2 - 1, gy = unit(hash(h + 1)) * 2 - 1, gz = unit(hash(h + 2)) * 2 - 1;
+        float l = std::sqrt(gx * gx + gy * gy + gz * gz) + 1e-6f;
+        return (gx * fx + gy * fy + gz * fz) / l;
+    };
+    auto perlin = [&](float px, float py, float pz, uint32_t seed) {
+        int ix = int(std::floor(px)), iy = int(std::floor(py)), iz = int(std::floor(pz));
+        float fx = px - ix, fy = py - iy, fz = pz - iz;
+        auto q = [](float t) { return t * t * t * (t * (t * 6 - 15) + 10); };
+        float ux = q(fx), uy = q(fy), uz = q(fz), r = 0;
+        for (int c = 0; c < 8; ++c) {
+            int dx = c & 1, dy = (c >> 1) & 1, dz = c >> 2;
+            float w = (dx ? ux : 1 - ux) * (dy ? uy : 1 - uy) * (dz ? uz : 1 - uz);
+            r += w * grad(ix + dx, iy + dy, iz + dz, seed, fx - dx, fy - dy, fz - dz);
+        }
+        return std::clamp(0.5f + r * 0.75f, 0.f, 1.f);
+    };
+    std::vector<uint8_t> v(size_t(N) * N * N * 4);
+    const float s = float(C) / N;
+    for (int z = 0; z < N; ++z)
+        for (int y = 0; y < N; ++y)
+            for (int x = 0; x < N; ++x) {
+                float px = (x + 0.5f) * s, py = (y + 0.5f) * s, pz = (z + 0.5f) * s;
+                int ix = int(std::floor(px)), iy = int(std::floor(py)), iz = int(std::floor(pz));
+                float f1 = 9, f2 = 9;
+                for (int c = 0; c < 27; ++c) {
+                    int cx = ix + c % 3 - 1, cy = iy + (c / 3) % 3 - 1, cz = iz + c / 9 - 1;
+                    uint32_t h = h3(cx, cy, cz, 99);
+                    float dx = cx + unit(h) - px, dy = cy + unit(hash(h + 7)) - py, dz = cz + unit(hash(h + 13)) - pz;
+                    float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+                }
+                const float ch[4] = {perlin(px, py, pz, 1), perlin(px, py, pz, 2), std::min(f1, 1.f), std::min(f2 - f1, 1.f)};
+                uint8_t* o = &v[((size_t(z) * N + y) * N + x) * 4];
+                for (int k = 0; k < 4; ++k) o[k] = uint8_t(std::lround(ch[k] * 255.f));
+            }
+    return v;
+}
+
 bool readFile(const std::string& path, std::string& out) {
     std::ifstream f(path);
     if (!f) { SDL_Log("Cannot open shader %s", path.c_str()); return false; }
@@ -48,6 +99,9 @@ bool Renderer::init(SDL_GPUDevice* device, int outFormat, const std::string& sha
     linear_ = SDL_CreateGPUSampler(device_, &si);
     si.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     ring_ = SDL_CreateGPUSampler(device_, &si);
+    si.address_mode_u = si.address_mode_v = si.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    wrap_ = SDL_CreateGPUSampler(device_, &si);
+    if (!wrap_ || !makeNoise()) { SDL_Log("Noise volume: %s", SDL_GetError()); return false; }
 
     SDL_GPUTextureCreateInfo ti{};
     ti.type = SDL_GPU_TEXTURETYPE_2D;
@@ -69,6 +123,36 @@ bool Renderer::init(SDL_GPUDevice* device, int outFormat, const std::string& sha
         SDL_SubmitGPUCommandBuffer(cmd);
     }
     return linear_ && buildAll(scenes_, post_);
+}
+
+bool Renderer::makeNoise() {
+    const std::vector<uint8_t> v = bakeNoise();
+    SDL_GPUTextureCreateInfo ti{};
+    ti.type = SDL_GPU_TEXTURETYPE_3D;
+    ti.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    ti.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    ti.width = ti.height = ti.layer_count_or_depth = kNoiseSize;
+    ti.num_levels = 1;
+    noise_ = SDL_CreateGPUTexture(device_, &ti);
+    SDL_GPUTransferBufferCreateInfo bi{};
+    bi.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    bi.size = Uint32(v.size());
+    SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(device_, &bi);
+    if (!noise_ || !tb) return false;
+    std::memcpy(SDL_MapGPUTransferBuffer(device_, tb, false), v.data(), bi.size);
+    SDL_UnmapGPUTransferBuffer(device_, tb);
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device_);
+    SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTextureTransferInfo src{};
+    src.transfer_buffer = tb;
+    SDL_GPUTextureRegion reg{};
+    reg.texture = noise_;
+    reg.w = reg.h = reg.d = kNoiseSize;
+    SDL_UploadToGPUTexture(cp, &src, &reg, false);
+    SDL_EndGPUCopyPass(cp);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(device_, tb);
+    return true;
 }
 
 SDL_GPUGraphicsPipeline* Renderer::makePipeline(const std::string& src, const char* entry, int format, int samplers,
@@ -113,7 +197,7 @@ bool Renderer::buildAll(std::vector<SDL_GPUGraphicsPipeline*>& scenes, std::vect
     for (int i = 0; i < kSceneCount && ok; ++i) {
         std::string file = shaderDir_ + "/scene_" + kScenes[i].id + ".metal";
         ok = readFile(file, src);
-        SDL_GPUGraphicsPipeline* p = ok ? makePipeline(common + src, "fmain", kHdr, 1, file) : nullptr;
+        SDL_GPUGraphicsPipeline* p = ok ? makePipeline(common + src, "fmain", kHdr, 2, file) : nullptr;
         scenes.push_back(p);
         ok = p != nullptr;
     }
@@ -218,7 +302,7 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
 
     auto pass = [&](SDL_GPUTexture* dst, unsigned vw, unsigned vh, SDL_GPUGraphicsPipeline* pipe,
                     std::initializer_list<SDL_GPUTexture*> srcs, const void* ubo, Uint32 size, bool clear = false,
-                    SDL_GPUSampler* sampler = nullptr) {
+                    SDL_GPUSampler* sampler = nullptr, SDL_GPUSampler* sampler1 = nullptr) {
         SDL_GPUColorTargetInfo t{};
         t.texture = dst;
         t.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE;
@@ -230,7 +314,11 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
         SDL_BindGPUGraphicsPipeline(rp, pipe);
         SDL_GPUTextureSamplerBinding b[2]{};
         Uint32 nb = 0;
-        for (SDL_GPUTexture* s : srcs) { b[nb].texture = s; b[nb].sampler = sampler ? sampler : linear_; ++nb; }
+        for (SDL_GPUTexture* s : srcs) {
+            b[nb].texture = s;
+            b[nb].sampler = (nb == 1 && sampler1) ? sampler1 : sampler ? sampler : linear_;
+            ++nb;
+        }
         if (nb) SDL_BindGPUFragmentSamplers(rp, 0, b, nb);
         SDL_PushGPUFragmentUniformData(cmd, 0, ubo, size);
         SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
@@ -246,7 +334,7 @@ void Renderer::render(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* target, unsigne
     cur_ ^= 1;
 
     // 1) Scene, raymarched in HDR into the top-left rw x rh of the scene texture.
-    pass(scene_, rw_, rh_, scenes_[scene], {history_tex_}, &u, sizeof u, false, ring_);
+    pass(scene_, rw_, rh_, scenes_[scene], {history_tex_, noise_}, &u, sizeof u, false, ring_, wrap_);
 
     // 2) Feedback: blend the warped previous frame into the new one.
     PostUniforms pu{};
@@ -339,6 +427,9 @@ void Renderer::shutdown() {
     scenes_.clear(); post_.clear();
     if (linear_) SDL_ReleaseGPUSampler(device_, linear_);
     if (ring_) SDL_ReleaseGPUSampler(device_, ring_);
+    if (wrap_) SDL_ReleaseGPUSampler(device_, wrap_);
+    if (noise_) SDL_ReleaseGPUTexture(device_, noise_);
+    wrap_ = nullptr; noise_ = nullptr;
     if (history_tex_) SDL_ReleaseGPUTexture(device_, history_tex_);
     if (histUpload_) SDL_ReleaseGPUTransferBuffer(device_, histUpload_);
     linear_ = ring_ = nullptr; history_tex_ = nullptr; histUpload_ = nullptr;

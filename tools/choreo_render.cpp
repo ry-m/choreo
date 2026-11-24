@@ -6,7 +6,7 @@
 //   choreo-render song.wav --at 30,61.5 --size 1280x720
 //   choreo-render song.wav --at 80,80.1,80.2,80.3 --sheet    # one image, 4 frames per row
 //   choreo-render song.wav --events                # director events + analyser beats/downbeats/sections
-//   choreo-render song.wav --bench --size 3024x1964 --scale 0.49   # GPU ms per frame, per scene
+//   choreo-render song.wav --bench --size 3024x1964 --scale 0.49   # GPU ms per frame, per scene (--scene N: one)
 #include "Png.h"
 #include "Wav.h"
 #include "analysis/Analyzer.h"
@@ -229,12 +229,16 @@ int main(int argc, char** argv) {
         long start = frameAt(std::min(60.0, dur / 2));
         std::printf("bench %ux%u, scale %.2f -> %dx%d raymarched\n", W, H, scale, int(W * scale), int(H * scale));
         for (int s = 0; s < kSceneCount; ++s) {
+            if (pinScene >= 0 && s != pinScene) continue;   // --scene N benches just that one
             std::vector<double> ms;
             gpu.r.resetHistory();
             for (long f = start; f < std::min<long>(start + 240, frames.size()); ++f) {
                 FrameRec fr = frames[f];
                 fr.scene = s;
-                std::memcpy(fr.u.pal, &kScenes[s].palettes[0], sizeof fr.u.pal);
+                for (int r = 0; r < 4; ++r) {
+                    const float* v[4] = {kScenes[s].palettes[0].a, kScenes[s].palettes[0].b, kScenes[s].palettes[0].c, kScenes[s].palettes[0].d};
+                    for (int i = 0; i < 3; ++i) fr.u.pal[r][i] = v[r][i];
+                }
                 double t = gpu.frame(fr, nullptr);
                 if (f > start + 10) ms.push_back(t);
             }

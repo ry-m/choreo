@@ -13,10 +13,31 @@ static float3 tap(texture2d<float> t, sampler sm, float2 uv, float4 s) {
     return t.sample(sm, max(q, 0.5 * s.zw)).rgb;
 }
 
+// FXAA-style edge smoothing of the raymarched scene (run inside the feedback pass, so it costs a few
+// taps instead of a pass): find the local edge direction from the four diagonal neighbours and blend
+// along it. Only where the contrast says there is an edge; flat areas keep their detail.
+static float fxLuma(float3 c) { c = c / (1.0 + c); return dot(c, float3(0.299, 0.587, 0.114)); }
+static float3 fxaa(texture2d<float> t, sampler sm, float2 uv, float4 s) {
+    float2 px = s.zw / s.xy;   // one texel in active-region uv
+    float3 cM = tap(t, sm, uv, s);
+    float lM = fxLuma(cM);
+    float lNW = fxLuma(tap(t, sm, uv + px * float2(-1, -1), s)), lNE = fxLuma(tap(t, sm, uv + px * float2(1, -1), s));
+    float lSW = fxLuma(tap(t, sm, uv + px * float2(-1, 1), s)), lSE = fxLuma(tap(t, sm, uv + px * float2(1, 1), s));
+    float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+    if (lMax - lMin < max(0.04, lMax * 0.15)) return cM;
+    float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+    float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
+    dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -6.0, 6.0) * px;
+    float3 a = 0.5 * (tap(t, sm, uv - dir / 6.0, s) + tap(t, sm, uv + dir / 6.0, s));
+    float3 b = a * 0.5 + 0.25 * (tap(t, sm, uv - dir * 0.5, s) + tap(t, sm, uv + dir * 0.5, s));
+    float lB = fxLuma(b);
+    return (lB < lMin || lB > lMax) ? a : b;
+}
+
 fragment float4 fs_feedback(VOut in [[stage_in]], constant PostU& P [[buffer(0)]],
                             texture2d<float> scene [[texture(0)]], texture2d<float> prev [[texture(1)]],
                             sampler s0 [[sampler(0)]], sampler s1 [[sampler(1)]]) {
-    float3 cur = tap(scene, s0, in.uv, P.src0);
+    float3 cur = fxaa(scene, s0, in.uv, P.src0);
     float trails = P.p0.x, zoom = P.p0.y, ang = P.p0.z, aspect = P.p0.w;
     float2 c = in.uv - 0.5;
     c.x *= aspect;
